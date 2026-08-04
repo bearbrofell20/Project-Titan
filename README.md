@@ -189,20 +189,36 @@ Pick one with `OANDA_STRATEGY`:
 OANDA_STRATEGY=ema_pullback python oanda_trader.py
 ```
 
-### Live dashboard
+### Unified dashboard (both bots)
 
-Watch the account and strategy in real time in your browser:
+One dashboard watches **both** trading bots at once:
 
 ```bash
 python dashboard.py     # then open http://localhost:8080
 ```
 
-It queries OANDA live (reusing the bot's own signal logic), shows balance / NAV
-/ realized + unrealized P/L, open positions with live P/L, a per-pair signal
-table, and recent trades — auto-refreshing every few seconds. It runs
-independently of the bot; run both together. Your token stays server-side
-(the browser only talks to localhost). Knobs: `DASHBOARD_PORT` (default 8080),
+* **OANDA · Forex** — balance / NAV / realized + unrealized P/L, open positions
+  with live P/L, a per-pair signal table (reusing the bot's own logic), and
+  recent trades.
+* **Kalshi · Event Contracts** — balance and open positions.
+
+Each venue is independent: if a venue's credentials aren't configured it shows
+"not configured" instead of erroring, so you can watch OANDA-only, Kalshi-only,
+or both. Auto-refreshes every few seconds; tokens stay server-side (the browser
+only talks to localhost). Knobs: `DASHBOARD_PORT` (default 8080),
 `DASHBOARD_REFRESH` seconds (default 8).
+
+### Running both bots together
+
+`run_all.py` launches the OANDA bot + dashboard in one process. To also run the
+Kalshi bot under the same dashboard, set `KALSHI_ENABLE=true` (with Kalshi
+credentials configured — see the Kalshi section above):
+
+```bash
+KALSHI_ENABLE=true python run_all.py     # both bots + dashboard
+```
+
+The Kalshi bot defaults to dry-run (`KALSHI_DRY_RUN=true`) until you opt in.
 
 ### Running 24/7
 
