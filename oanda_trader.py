@@ -72,7 +72,8 @@ class Config:
     ]
 
     # Trading Parameters -----------------------------------------------------
-    TIMEFRAME = "M5"                    # 5-minute candles
+    # Candle granularity: S5/S10/S30, M1/M5/M15, H1... (OANDA v20 codes).
+    TIMEFRAME = os.getenv("OANDA_TIMEFRAME", "M5")
     CANDLE_COUNT = _env_int("OANDA_CANDLE_COUNT", 60)
     RISK_PER_TRADE = _env_float("OANDA_RISK_PER_TRADE", 10.0)  # in ACCOUNT_CURRENCY
 
@@ -147,6 +148,12 @@ def validate_config(api_token: str):
         )
     if Config.EMA_FAST >= Config.EMA_SLOW:
         problems.append("OANDA_EMA_FAST must be < OANDA_EMA_SLOW")
+    valid_granularities = {
+        "S5", "S10", "S15", "S30", "M1", "M2", "M4", "M5", "M10", "M15",
+        "M30", "H1", "H2", "H3", "H4", "H6", "H8", "H12", "D", "W", "M",
+    }
+    if Config.TIMEFRAME not in valid_granularities:
+        problems.append(f"OANDA_TIMEFRAME={Config.TIMEFRAME!r} is not a valid OANDA granularity")
     if Config.MIN_OPEN_TRADES > Config.MAX_OPEN_TRADES:
         problems.append(
             f"OANDA_MIN_OPEN_TRADES ({Config.MIN_OPEN_TRADES}) must be <= "
