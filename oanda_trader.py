@@ -99,8 +99,15 @@ class Config:
     # Risk Management --------------------------------------------------------
     STOP_LOSS_PIPS = _env_int("OANDA_STOP_LOSS_PIPS", 20)
     TAKE_PROFIT_PIPS = _env_int("OANDA_TAKE_PROFIT_PIPS", 40)
-    MAX_OPEN_TRADES = _env_int("OANDA_MAX_OPEN_TRADES", 6)
+    MAX_OPEN_TRADES = _env_int("OANDA_MAX_OPEN_TRADES", 8)
+    # Always keep at least this many trades open (fills with trend-following
+    # fallback entries when strategy signals aren't enough).
+    MIN_OPEN_TRADES = _env_int("OANDA_MIN_OPEN_TRADES", 5)
     ONE_POSITION_PER_INSTRUMENT = True   # no stacking on every candle
+
+    # Profit-take rule: close a trade once its unrealized profit reaches this
+    # percent of the margin committed to that trade ("10% back -> sell").
+    PROFIT_TAKE_PCT = _env_float("OANDA_PROFIT_TAKE_PCT", 10.0)
 
     # Safety -----------------------------------------------------------------
     # DRY_RUN: log intended orders, send nothing. Default False so the demo
@@ -140,6 +147,11 @@ def validate_config(api_token: str):
         )
     if Config.EMA_FAST >= Config.EMA_SLOW:
         problems.append("OANDA_EMA_FAST must be < OANDA_EMA_SLOW")
+    if Config.MIN_OPEN_TRADES > Config.MAX_OPEN_TRADES:
+        problems.append(
+            f"OANDA_MIN_OPEN_TRADES ({Config.MIN_OPEN_TRADES}) must be <= "
+            f"OANDA_MAX_OPEN_TRADES ({Config.MAX_OPEN_TRADES})"
+        )
     if Config.is_live_endpoint() and not Config.ALLOW_LIVE:
         problems.append(
             "API_URL points at the LIVE endpoint but OANDA_ALLOW_LIVE is not set. "
@@ -292,6 +304,11 @@ class OandaClient:
         if not data:
             return set()
         return {p["instrument"] for p in data.get("positions", [])}
+
+    def get_open_trades(self):
+        """List of open trades (each has id, instrument, unrealizedPL, marginUsed)."""
+        data = self._request("GET", f"/v3/accounts/{Config.ACCOUNT_ID}/openTrades")
+        return (data or {}).get("trades", [])
 
     def place_order(self, instrument, units, entry_price, stop_loss_pips, take_profit_pips):
         """Place a market order with a fill-relative SL distance and a TP price."""
@@ -581,6 +598,23 @@ def signal_for(candles, instrument):
     return detector.get_signal(candles, instrument)
 
 
+def should_take_profit(unrealized_pl, margin_used, pct):
+    """True when a trade's unrealized return on its margin reaches ``pct`` percent."""
+    if margin_used <= 0:
+        return False
+    return (unrealized_pl / margin_used) * 100.0 >= pct
+
+
+def fallback_direction(candles):
+    """Trend-following direction (BUY/SELL) used to top up to the minimum trade
+    count when strategy signals are scarce: long if the fast EMA is at/above the
+    slow EMA, short otherwise."""
+    closes = [float(c["mid"]["c"]) for c in candles]
+    fast = ema_series(closes, Config.EMA_FAST)[-1]
+    slow = ema_series(closes, Config.EMA_SLOW)[-1]
+    return "BUY" if fast >= slow else "SELL"
+
+
 # ============================================================================
 # POSITION MANAGER   (correct sizing)
 # ============================================================================
@@ -675,6 +709,8 @@ class OandaBot:
         logger.info(f"Strategy: {Config.STRATEGY}")
         logger.info(f"Risk per trade: ${Config.RISK_PER_TRADE}")
         logger.info(f"Stop Loss: {Config.STOP_LOSS_PIPS} pips | Take Profit: {Config.TAKE_PROFIT_PIPS} pips")
+        logger.info(f"Profit-take: +{Config.PROFIT_TAKE_PCT}% of margin | "
+                    f"Open trades: min {Config.MIN_OPEN_TRADES}, max {Config.MAX_OPEN_TRADES}")
         logger.info(f"Monitoring {len(Config.INSTRUMENTS)} pairs")
         logger.info(f"Kill switch: create '{Config.KILL_SWITCH_FILE}' to stop")
         logger.info("=" * 60)
@@ -736,6 +772,58 @@ class OandaBot:
         self._rate_cache[quote] = rate
         return rate
 
+    # -- order placement (shared by signals and minimum-fill) --------------
+    def _open_trade(self, instrument, direction, candles, open_instruments, tag=""):
+        """Size and submit one trade in `direction` ('BUY'/'SELL'). Returns bool."""
+        q2usd = self.quote_to_usd(instrument)
+        units = PositionManager.calculate_units(instrument, Config.STOP_LOSS_PIPS, q2usd)
+        if units <= 0:
+            logger.warning(f"Skip {instrument}: computed 0 units (sizing unavailable)")
+            return False
+        if direction == "SELL":
+            units = -units
+
+        entry_price = float(candles[-1]["mid"]["c"])
+        label = f"{direction}{(' ' + tag) if tag else ''}"
+        logger.info(f"\n📊 {label}: {instrument} ({units} units)")
+        order = self.client.place_order(
+            instrument, units, entry_price, Config.STOP_LOSS_PIPS, Config.TAKE_PROFIT_PIPS,
+        )
+        if order:
+            open_instruments.add(instrument)
+            self.trade_logger.log_trade(
+                instrument, label, units, order.get("fill_price", entry_price),
+                sl=order.get("sl_distance", 0), tp=order.get("tp", 0),
+            )
+            return True
+        return False
+
+    # -- profit-take rule: close a trade at +PROFIT_TAKE_PCT% of its margin -
+    def manage_open_trades(self):
+        for t in self.client.get_open_trades():
+            upl = float(t.get("unrealizedPL", 0) or 0)
+            margin = float(t.get("marginUsed", 0) or 0)
+            if should_take_profit(upl, margin, Config.PROFIT_TAKE_PCT):
+                pct = (upl / margin * 100) if margin else 0
+                logger.info(f"💰 PROFIT-TAKE {t.get('instrument')} #{t.get('id')}: "
+                            f"+{pct:.1f}% of margin (>= {Config.PROFIT_TAKE_PCT}%), closing")
+                self.client.close_trade(t.get("id"))
+
+    # -- keep at least MIN_OPEN_TRADES open (trend-following fallback) ------
+    def ensure_minimum_trades(self, open_instruments):
+        for instrument in Config.INSTRUMENTS:
+            if len(open_instruments) >= Config.MIN_OPEN_TRADES:
+                break
+            if instrument in open_instruments:
+                continue
+            raw = self.client.get_candles(instrument, granularity=Config.TIMEFRAME,
+                                          count=Config.CANDLE_COUNT)
+            candles = completed_candles(raw)
+            if len(candles) < Config.EMA_SLOW + 2:
+                continue
+            self._open_trade(instrument, fallback_direction(candles),
+                             candles, open_instruments, tag="(min-fill)")
+
     # -- per-pair scan -----------------------------------------------------
     def scan_pair(self, instrument, open_instruments):
         try:
@@ -762,27 +850,7 @@ class OandaBot:
                 logger.info(f"Skip {instrument}: max open trades ({Config.MAX_OPEN_TRADES}) reached")
                 return
 
-            q2usd = self.quote_to_usd(instrument)
-            units = PositionManager.calculate_units(instrument, Config.STOP_LOSS_PIPS, q2usd)
-            if units <= 0:
-                logger.warning(f"Skip {instrument}: computed 0 units (sizing unavailable)")
-                return
-            if signal == "SELL":
-                units = -units
-
-            entry_price = float(candles[-1]["mid"]["c"])
-            logger.info(f"\n📊 SIGNAL: {signal} {instrument} ({units} units)")
-            order = self.client.place_order(
-                instrument, units, entry_price,
-                Config.STOP_LOSS_PIPS, Config.TAKE_PROFIT_PIPS,
-            )
-            if order:
-                open_instruments.add(instrument)  # avoid re-entering same cycle
-                self.trade_logger.log_trade(
-                    instrument, signal, units,
-                    order.get("fill_price", entry_price),
-                    sl=order.get("sl_distance", 0), tp=order.get("tp", 0),
-                )
+            self._open_trade(instrument, signal, candles, open_instruments)
         except Exception as e:
             logger.error(f"Error scanning {instrument}: {e}")
 
@@ -799,13 +867,19 @@ class OandaBot:
                 break
 
             self._rate_cache.clear()  # refresh conversion rates each cycle
+
+            self.manage_open_trades()  # 1) take profits at +PROFIT_TAKE_PCT% of margin
             open_instruments = self.client.get_open_instruments()
 
-            logger.info(f"\n[Cycle {cycle}] Scanning {len(Config.INSTRUMENTS)} pairs...")
-            for instrument in Config.INSTRUMENTS:
+            logger.info(f"\n[Cycle {cycle}] Scanning {len(Config.INSTRUMENTS)} pairs "
+                        f"({len(open_instruments)} open)...")
+            for instrument in Config.INSTRUMENTS:  # 2) strategy entries
                 if self.check_kill_switch():
                     break
                 self.scan_pair(instrument, open_instruments)
+
+            if not self.check_kill_switch():       # 3) top up to the minimum
+                self.ensure_minimum_trades(open_instruments)
 
             account = self.client.get_account_details()
             if account:

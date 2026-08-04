@@ -170,7 +170,9 @@ Stop it any time by creating the kill-switch file: `touch KILL_SWITCH.txt`.
 | `OANDA_RISK_PER_TRADE`   | `10.0`                           | USD risked per trade                      |
 | `OANDA_DRY_RUN`          | `false`                          | `true` = log only, submit nothing         |
 | `OANDA_ALLOW_LIVE`       | `false`                          | must be `yes` to use the real-money endpoint |
-| `OANDA_MAX_OPEN_TRADES`  | `6`                              | cap on concurrent open positions          |
+| `OANDA_MAX_OPEN_TRADES`  | `8`                              | cap on concurrent open positions          |
+| `OANDA_MIN_OPEN_TRADES`  | `5`                              | always keep at least this many open (trend-fallback fills the gap) |
+| `OANDA_PROFIT_TAKE_PCT`  | `10`                             | close a trade at +this% of its margin     |
 
 ### Strategies
 
@@ -313,6 +315,11 @@ is the better answer.)
 * `OANDA_DRY_RUN=true` logs intended orders without sending any.
 * One position per instrument and a `MAX_OPEN_TRADES` cap prevent the loop from
   stacking positions every candle.
+* Each cycle the bot (1) closes any trade up **+`PROFIT_TAKE_PCT`% of its
+  margin**, (2) takes strategy entries, then (3) tops up to
+  **`MIN_OPEN_TRADES`** with trend-following fallback entries. Note: forcing a
+  minimum means some entries are lower-conviction, and several forced longs at
+  once are correlated risk — size and thresholds are yours to tune.
 
 ### Fixes applied to the original scalper
 

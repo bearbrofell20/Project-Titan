@@ -217,3 +217,38 @@ def test_bollinger_none_when_flat():
 
 def test_all_strategies_registered():
     assert set(ot.STRATEGIES) == {"rsi", "ema_pullback", "breakout", "bollinger"}
+
+
+# --- profit-take rule (+X% of margin) --------------------------------------
+def test_should_take_profit_triggers_at_threshold():
+    assert ot.should_take_profit(10.0, 100.0, 10) is True    # exactly 10%
+    assert ot.should_take_profit(12.0, 100.0, 10) is True    # above
+    assert ot.should_take_profit(9.99, 100.0, 10) is False   # below
+    assert ot.should_take_profit(-5.0, 100.0, 10) is False   # a loss
+
+
+def test_should_take_profit_guards_bad_margin():
+    assert ot.should_take_profit(50.0, 0.0, 10) is False
+    assert ot.should_take_profit(50.0, -1.0, 10) is False
+
+
+# --- minimum-fill fallback direction ---------------------------------------
+def test_fallback_direction_buys_in_uptrend():
+    up = [_c(1.10 + i * 0.001) for i in range(30)]
+    assert ot.fallback_direction(up) == "BUY"
+
+
+def test_fallback_direction_sells_in_downtrend():
+    down = [_c(1.20 - i * 0.001) for i in range(30)]
+    assert ot.fallback_direction(down) == "SELL"
+
+
+# --- min/max open-trades validation ----------------------------------------
+def test_validate_blocks_min_greater_than_max():
+    orig_min, orig_max = Config.MIN_OPEN_TRADES, Config.MAX_OPEN_TRADES
+    try:
+        Config.MIN_OPEN_TRADES, Config.MAX_OPEN_TRADES = 9, 6
+        problems = ot.validate_config("tok")
+        assert any("MIN_OPEN_TRADES" in p for p in problems)
+    finally:
+        Config.MIN_OPEN_TRADES, Config.MAX_OPEN_TRADES = orig_min, orig_max
