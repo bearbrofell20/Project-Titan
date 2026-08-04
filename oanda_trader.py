@@ -30,7 +30,7 @@ import os
 import json
 import time
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import defaultdict
 from pathlib import Path
 
@@ -178,6 +178,23 @@ def completed_candles(candles):
     return [c for c in candles if c.get("complete")]
 
 
+def candle_epoch(time_str):
+    """Parse an OANDA candle 'time' to an int epoch, accepting UNIX or RFC3339.
+
+    OANDA returns UNIX ('1785865500.000000000') when the Accept-Datetime-Format
+    header is honoured, and RFC3339 ('2026-08-04T17:40:00.000000000Z') otherwise.
+    We accept both so the loop can't break on a header/format change.
+    """
+    try:
+        return int(float(time_str))  # UNIX seconds
+    except (TypeError, ValueError):
+        pass
+    # RFC3339, e.g. 2026-08-04T17:40:00.000000000Z -> drop fractional secs & Z.
+    base = time_str.rstrip("Z").split(".")[0]
+    dt = datetime.strptime(base, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+    return int(dt.timestamp())
+
+
 # ============================================================================
 # OANDA API CLIENT
 # ============================================================================
@@ -190,7 +207,7 @@ class OandaClient:
         self.api_token = api_token
         self.headers = {
             "Authorization": f"Bearer {api_token}",
-            "AcceptDatetimeFormat": "UNIX",
+            "Accept-Datetime-Format": "UNIX",
             "Content-Type": "application/json",
         }
 
@@ -536,7 +553,7 @@ class OandaBot:
                 return
 
             # De-dup on the latest *completed* candle: act once per closed bar.
-            latest_time = int(float(candles[-1]["time"]))
+            latest_time = candle_epoch(candles[-1]["time"])
             if latest_time <= self.last_candle_time[instrument]:
                 return
             self.last_candle_time[instrument] = latest_time

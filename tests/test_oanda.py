@@ -21,6 +21,12 @@ def test_completed_candles_all_complete():
     assert len(ot.completed_candles(raw)) == 2
 
 
+def test_candle_epoch_accepts_unix_and_rfc3339():
+    # Same instant expressed both ways OANDA can return it.
+    assert ot.candle_epoch("1785865500.000000000") == 1785865500
+    assert ot.candle_epoch("2026-08-04T17:45:00.000000000Z") == 1785865500
+
+
 # --- dry-run order path (no network) --------------------------------------
 def test_dry_run_order_returns_shape_without_network():
     original = Config.DRY_RUN
