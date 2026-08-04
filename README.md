@@ -184,10 +184,30 @@ Pick one with `OANDA_STRATEGY`:
   when the trend **resumes** (close back across the fast EMA). Fewer but
   higher-quality entries than chasing breakouts. Tunable: `OANDA_EMA_FAST`
   (default 9), `OANDA_EMA_SLOW` (default 21).
+* **`breakout`** — Donchian-style trend following: buys a close that makes a new
+  `OANDA_BREAKOUT_LOOKBACK`-bar high (default 20), sells a new low.
+* **`bollinger`** — mean reversion: buys below the lower Bollinger band and sells
+  above the upper band. Tunable: `OANDA_BOLL_PERIOD` (20), `OANDA_BOLL_K` (2.0).
 
 ```bash
 OANDA_STRATEGY=ema_pullback python oanda_trader.py
 ```
+
+### Backtest — test every strategy fast
+
+Compare all strategies over historical candles instead of waiting a week each:
+
+```bash
+python backtest.py             # compare ALL strategies (1000 M5 bars)
+python backtest.py all 2000    # ~7 days of history
+python backtest.py bollinger   # one strategy
+```
+
+It replays each strategy bar by bar, simulating the same SL/TP exits with each
+later bar's high/low (stop assumed first if a bar spans both), and prints trades,
+win rate, net pips, profit factor, max drawdown and a dollar estimate per
+strategy. It ignores spread/slippage/financing, so treat it as a **relative
+ranking**, not a profit promise — confirm the winner on the live demo.
 
 ### Unified dashboard (both bots)
 

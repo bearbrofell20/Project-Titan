@@ -89,6 +89,13 @@ class Config:
     EMA_FAST = _env_int("OANDA_EMA_FAST", 9)
     EMA_SLOW = _env_int("OANDA_EMA_SLOW", 21)
 
+    # Breakout strategy ------------------------------------------------------
+    BREAKOUT_LOOKBACK = _env_int("OANDA_BREAKOUT_LOOKBACK", 20)
+
+    # Bollinger mean-reversion strategy --------------------------------------
+    BOLL_PERIOD = _env_int("OANDA_BOLL_PERIOD", 20)
+    BOLL_K = _env_float("OANDA_BOLL_K", 2.0)
+
     # Risk Management --------------------------------------------------------
     STOP_LOSS_PIPS = _env_int("OANDA_STOP_LOSS_PIPS", 20)
     TAKE_PROFIT_PIPS = _env_int("OANDA_TAKE_PROFIT_PIPS", 40)
@@ -490,10 +497,81 @@ class EmaPullbackDetector:
         return None
 
 
+# ============================================================================
+# BREAKOUT DETECTOR  (Donchian-style, trend following)
+# ============================================================================
+
+
+class BreakoutDetector:
+    """Enter on a close breaking the recent range — momentum/trend continuation.
+
+    * BUY  — current close is the highest close of the last ``BREAKOUT_LOOKBACK``
+             bars (an upside breakout).
+    * SELL — current close is the lowest close of that window.
+    """
+
+    name = "breakout"
+
+    @staticmethod
+    def get_signal(candles, instrument):
+        n = Config.BREAKOUT_LOOKBACK
+        if len(candles) < n + 1:
+            return None
+        closes = [float(c["mid"]["c"]) for c in candles]
+        prior = closes[-(n + 1):-1]   # the N closes before the current one
+        curr = closes[-1]
+        if curr > max(prior):
+            logger.debug(f"  {instrument}: close {curr} broke {n}-bar high -> BUY")
+            return "BUY"
+        if curr < min(prior):
+            logger.debug(f"  {instrument}: close {curr} broke {n}-bar low -> SELL")
+            return "SELL"
+        return None
+
+
+# ============================================================================
+# BOLLINGER MEAN-REVERSION DETECTOR
+# ============================================================================
+
+
+class BollingerReversionDetector:
+    """Fade stretches away from the mean (counter-trend).
+
+    Computes a moving average and standard deviation over ``BOLL_PERIOD`` closes.
+    * BUY  — close is below the lower band (mean - K*std): oversold, expect a bounce.
+    * SELL — close is above the upper band (mean + K*std): overbought, expect a fade.
+    """
+
+    name = "bollinger"
+
+    @staticmethod
+    def get_signal(candles, instrument):
+        n = Config.BOLL_PERIOD
+        if len(candles) < n:
+            return None
+        closes = [float(c["mid"]["c"]) for c in candles]
+        window = closes[-n:]
+        mean = sum(window) / n
+        var = sum((x - mean) ** 2 for x in window) / n
+        std = var ** 0.5
+        if std == 0:
+            return None
+        curr = closes[-1]
+        if curr < mean - Config.BOLL_K * std:
+            logger.debug(f"  {instrument}: below lower Bollinger band -> BUY")
+            return "BUY"
+        if curr > mean + Config.BOLL_K * std:
+            logger.debug(f"  {instrument}: above upper Bollinger band -> SELL")
+            return "SELL"
+        return None
+
+
 # Strategy dispatch -----------------------------------------------------------
 STRATEGIES = {
     "rsi": MomentumDetector,
     "ema_pullback": EmaPullbackDetector,
+    "breakout": BreakoutDetector,
+    "bollinger": BollingerReversionDetector,
 }
 
 

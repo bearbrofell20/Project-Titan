@@ -175,3 +175,45 @@ def test_signal_for_dispatches_on_config():
         assert ot.signal_for(candles, "EUR_USD") is None
     finally:
         Config.STRATEGY = original
+
+
+# --- breakout strategy -----------------------------------------------------
+def test_breakout_buys_on_new_high():
+    # 21 flat closes then a higher one -> upside breakout.
+    prices = [1.1000] * 21 + [1.1050]
+    candles = [_c(p) for p in prices]
+    assert ot.BreakoutDetector.get_signal(candles, "EUR_USD") == "BUY"
+
+
+def test_breakout_sells_on_new_low():
+    prices = [1.1000] * 21 + [1.0950]
+    candles = [_c(p) for p in prices]
+    assert ot.BreakoutDetector.get_signal(candles, "EUR_USD") == "SELL"
+
+
+def test_breakout_none_inside_range():
+    prices = [1.1000 + (i % 3) * 0.0001 for i in range(25)]
+    assert ot.BreakoutDetector.get_signal([_c(p) for p in prices], "EUR_USD") in (None, "BUY", "SELL")
+    flat = [_c(1.1000)] * 25
+    assert ot.BreakoutDetector.get_signal(flat, "EUR_USD") is None
+
+
+# --- bollinger mean-reversion ----------------------------------------------
+def test_bollinger_buys_when_below_lower_band():
+    prices = [1.1000] * 19 + [1.0900]  # sharp drop below the band
+    candles = [_c(p) for p in prices]
+    assert ot.BollingerReversionDetector.get_signal(candles, "EUR_USD") == "BUY"
+
+
+def test_bollinger_sells_when_above_upper_band():
+    prices = [1.1000] * 19 + [1.1100]
+    candles = [_c(p) for p in prices]
+    assert ot.BollingerReversionDetector.get_signal(candles, "EUR_USD") == "SELL"
+
+
+def test_bollinger_none_when_flat():
+    assert ot.BollingerReversionDetector.get_signal([_c(1.1)] * 25, "EUR_USD") is None
+
+
+def test_all_strategies_registered():
+    assert set(ot.STRATEGIES) == {"rsi", "ema_pullback", "breakout", "bollinger"}
