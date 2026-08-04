@@ -166,10 +166,43 @@ Stop it any time by creating the kill-switch file: `touch KILL_SWITCH.txt`.
 | `OANDA_API_TOKEN`        | —                                | v20 API token (required)                  |
 | `OANDA_ACCOUNT_ID`       | `101-001-39975042-001`           | account to trade                          |
 | `OANDA_API_URL`          | `https://api-fxpractice.oanda.com` | demo endpoint; live is `api-fxtrade`    |
+| `OANDA_STRATEGY`         | `rsi`                            | `rsi` or `ema_pullback` (see below)       |
 | `OANDA_RISK_PER_TRADE`   | `10.0`                           | USD risked per trade                      |
 | `OANDA_DRY_RUN`          | `false`                          | `true` = log only, submit nothing         |
 | `OANDA_ALLOW_LIVE`       | `false`                          | must be `yes` to use the real-money endpoint |
 | `OANDA_MAX_OPEN_TRADES`  | `6`                              | cap on concurrent open positions          |
+
+### Strategies
+
+Pick one with `OANDA_STRATEGY`:
+
+* **`rsi`** (default) — buys an RSI dip inside a short uptrend, sells an RSI
+  rally inside a downtrend. Tunable: `OANDA_RSI_PERIOD`, `OANDA_RSI_OVERSOLD`,
+  `OANDA_RSI_OVERBOUGHT`, `OANDA_TREND_PERIOD`.
+* **`ema_pullback`** — identifies the trend with a fast/slow EMA (fast above slow
+  = uptrend), waits for price to pull back through the fast EMA, and enters only
+  when the trend **resumes** (close back across the fast EMA). Fewer but
+  higher-quality entries than chasing breakouts. Tunable: `OANDA_EMA_FAST`
+  (default 9), `OANDA_EMA_SLOW` (default 21).
+
+```bash
+OANDA_STRATEGY=ema_pullback python oanda_trader.py
+```
+
+### Live dashboard
+
+Watch the account and strategy in real time in your browser:
+
+```bash
+python dashboard.py     # then open http://localhost:8080
+```
+
+It queries OANDA live (reusing the bot's own signal logic), shows balance / NAV
+/ realized + unrealized P/L, open positions with live P/L, a per-pair signal
+table, and recent trades — auto-refreshing every few seconds. It runs
+independently of the bot; run both together. Your token stays server-side
+(the browser only talks to localhost). Knobs: `DASHBOARD_PORT` (default 8080),
+`DASHBOARD_REFRESH` seconds (default 8).
 
 ### Safety model
 

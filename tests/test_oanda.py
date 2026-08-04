@@ -129,3 +129,49 @@ def test_validate_blocks_live_without_optin():
         assert any("LIVE" in p for p in problems)
     finally:
         Config.API_URL, Config.ALLOW_LIVE = original_url, original_allow
+
+
+# --- EMA pullback strategy -------------------------------------------------
+def _c(v):
+    return {"mid": {"c": f"{v:.5f}"}, "time": "0", "complete": True}
+
+
+def test_ema_series_basic():
+    out = ot.ema_series([1, 1, 1, 1], 3)
+    assert out == [1, 1, 1, 1]  # flat input -> flat EMA
+
+
+def test_ema_pullback_buys_on_resumed_uptrend():
+    # Long uptrend so fast EMA > slow EMA, then a one-bar dip below the fast
+    # EMA (pullback) followed by a close back above it (resumption).
+    prices = [1.10 + i * 0.001 for i in range(30)]  # steady uptrend
+    prices[-2] = prices[-3] - 0.006                 # pullback dips below fast EMA
+    prices[-1] = prices[-3] + 0.004                 # resumes back above
+    candles = [_c(p) for p in prices]
+    assert ot.EmaPullbackDetector.get_signal(candles, "EUR_USD") == "BUY"
+
+
+def test_ema_pullback_none_without_pullback():
+    prices = [1.10 + i * 0.001 for i in range(30)]  # clean uptrend, no dip
+    candles = [_c(p) for p in prices]
+    assert ot.EmaPullbackDetector.get_signal(candles, "EUR_USD") is None
+
+
+def test_ema_pullback_needs_enough_history():
+    candles = [_c(1.1)] * 5
+    assert ot.EmaPullbackDetector.get_signal(candles, "EUR_USD") is None
+
+
+def test_signal_for_dispatches_on_config():
+    prices = [1.10 + i * 0.001 for i in range(30)]
+    prices[-2] = prices[-3] - 0.006
+    prices[-1] = prices[-3] + 0.004
+    candles = [_c(p) for p in prices]
+    original = Config.STRATEGY
+    try:
+        Config.STRATEGY = "ema_pullback"
+        assert ot.signal_for(candles, "EUR_USD") == "BUY"
+        Config.STRATEGY = "rsi"  # RSI won't fire on this clean uptrend
+        assert ot.signal_for(candles, "EUR_USD") is None
+    finally:
+        Config.STRATEGY = original

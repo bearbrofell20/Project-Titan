@@ -76,11 +76,18 @@ class Config:
     CANDLE_COUNT = _env_int("OANDA_CANDLE_COUNT", 60)
     RISK_PER_TRADE = _env_float("OANDA_RISK_PER_TRADE", 10.0)  # in ACCOUNT_CURRENCY
 
-    # Momentum Thresholds (env-tunable) --------------------------------------
+    # Strategy selection -----------------------------------------------------
+    STRATEGY = os.getenv("OANDA_STRATEGY", "rsi")  # "rsi" or "ema_pullback"
+
+    # Momentum (RSI) thresholds (env-tunable) --------------------------------
     RSI_PERIOD = _env_int("OANDA_RSI_PERIOD", 14)
     RSI_OVERSOLD = _env_float("OANDA_RSI_OVERSOLD", 30)     # dip within uptrend -> buy
     RSI_OVERBOUGHT = _env_float("OANDA_RSI_OVERBOUGHT", 70)  # rally within downtrend -> sell
     TREND_PERIOD = _env_int("OANDA_TREND_PERIOD", 3)
+
+    # EMA pullback strategy (env-tunable) ------------------------------------
+    EMA_FAST = _env_int("OANDA_EMA_FAST", 9)
+    EMA_SLOW = _env_int("OANDA_EMA_SLOW", 21)
 
     # Risk Management --------------------------------------------------------
     STOP_LOSS_PIPS = _env_int("OANDA_STOP_LOSS_PIPS", 20)
@@ -119,6 +126,13 @@ def validate_config(api_token: str):
         problems.append("RISK_PER_TRADE must be positive")
     if Config.STOP_LOSS_PIPS <= 0:
         problems.append("STOP_LOSS_PIPS must be positive")
+    if Config.STRATEGY not in STRATEGIES:
+        problems.append(
+            f"OANDA_STRATEGY={Config.STRATEGY!r} is unknown; "
+            f"choose one of {sorted(STRATEGIES)}"
+        )
+    if Config.EMA_FAST >= Config.EMA_SLOW:
+        problems.append("OANDA_EMA_FAST must be < OANDA_EMA_SLOW")
     if Config.is_live_endpoint() and not Config.ALLOW_LIVE:
         problems.append(
             "API_URL points at the LIVE endpoint but OANDA_ALLOW_LIVE is not set. "
@@ -415,6 +429,81 @@ class MomentumDetector:
 
 
 # ============================================================================
+# EMA PULLBACK DETECTOR
+# ============================================================================
+
+
+def ema_series(values, period):
+    """Exponential moving average series (same length as `values`)."""
+    if not values:
+        return []
+    k = 2.0 / (period + 1)
+    out = [values[0]]
+    for v in values[1:]:
+        out.append(v * k + out[-1] * (1 - k))
+    return out
+
+
+class EmaPullbackDetector:
+    """Trend-pullback entries using a fast/slow EMA.
+
+    Trend is set by the fast EMA vs the slow EMA. We then wait for price to pull
+    back to (through) the fast EMA and enter only when the trend *resumes*:
+
+      * BUY  — fast EMA > slow EMA (uptrend), the previous close was below the
+               fast EMA (the pullback), and the current close closed back above it.
+      * SELL — fast EMA < slow EMA (downtrend), the previous close was above the
+               fast EMA, and the current close closed back below it.
+
+    This fires far less often than chasing breakouts, but only on trend
+    continuation after a dip/rally into the moving average.
+    """
+
+    name = "ema_pullback"
+
+    @staticmethod
+    def get_signal(candles, instrument):
+        needed = Config.EMA_SLOW + 2
+        if len(candles) < needed:
+            return None
+
+        closes = [float(c["mid"]["c"]) for c in candles]
+        fast = ema_series(closes, Config.EMA_FAST)
+        slow = ema_series(closes, Config.EMA_SLOW)
+
+        fast_now, slow_now = fast[-1], slow[-1]
+        prev_close, curr_close = closes[-2], closes[-1]
+        prev_fast = fast[-2]
+
+        if fast_now > slow_now and prev_close < prev_fast and curr_close > fast_now:
+            logger.debug(
+                f"  {instrument}: uptrend (EMA{Config.EMA_FAST}>{Config.EMA_SLOW}), "
+                f"pullback resumed above EMA -> BUY"
+            )
+            return "BUY"
+        if fast_now < slow_now and prev_close > prev_fast and curr_close < fast_now:
+            logger.debug(
+                f"  {instrument}: downtrend (EMA{Config.EMA_FAST}<{Config.EMA_SLOW}), "
+                f"pullback resumed below EMA -> SELL"
+            )
+            return "SELL"
+        return None
+
+
+# Strategy dispatch -----------------------------------------------------------
+STRATEGIES = {
+    "rsi": MomentumDetector,
+    "ema_pullback": EmaPullbackDetector,
+}
+
+
+def signal_for(candles, instrument):
+    """Return the entry signal from the currently-selected strategy."""
+    detector = STRATEGIES.get(Config.STRATEGY, MomentumDetector)
+    return detector.get_signal(candles, instrument)
+
+
+# ============================================================================
 # POSITION MANAGER   (correct sizing)
 # ============================================================================
 
@@ -505,6 +594,7 @@ class OandaBot:
         logger.info("=" * 60)
         logger.info(f"Account: {Config.ACCOUNT_ID}")
         logger.info(f"Mode: {mode}")
+        logger.info(f"Strategy: {Config.STRATEGY}")
         logger.info(f"Risk per trade: ${Config.RISK_PER_TRADE}")
         logger.info(f"Stop Loss: {Config.STOP_LOSS_PIPS} pips | Take Profit: {Config.TAKE_PROFIT_PIPS} pips")
         logger.info(f"Monitoring {len(Config.INSTRUMENTS)} pairs")
@@ -583,7 +673,7 @@ class OandaBot:
                 return
             self.last_candle_time[instrument] = latest_time
 
-            signal = MomentumDetector.get_signal(candles, instrument)
+            signal = signal_for(candles, instrument)
             if not signal:
                 return
 

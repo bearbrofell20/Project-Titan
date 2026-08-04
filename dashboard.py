@@ -28,7 +28,13 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import oanda_trader as ot
-from oanda_trader import Config, MomentumDetector, OandaClient, completed_candles
+from oanda_trader import (
+    Config,
+    MomentumDetector,
+    OandaClient,
+    completed_candles,
+    signal_for,
+)
 
 PORT = int(os.getenv("DASHBOARD_PORT", "8080"))
 REFRESH = int(os.getenv("DASHBOARD_REFRESH", "8"))
@@ -98,7 +104,7 @@ def build_market_snapshot(client: OandaClient) -> list:
             rsi = MomentumDetector.calculate_rsi(closes, Config.RSI_PERIOD)
             row["rsi"] = round(rsi, 1) if rsi is not None else None
             row["trend"] = MomentumDetector.detect_trend(candles, Config.TREND_PERIOD)
-            row["signal"] = MomentumDetector.get_signal(candles, inst)
+            row["signal"] = signal_for(candles, inst)
         rows.append(row)
     return rows
 
@@ -135,6 +141,7 @@ def build_state(client: OandaClient) -> dict:
         "time": datetime.now(timezone.utc).isoformat(),
         "config": {
             "env": "LIVE" if Config.is_live_endpoint() else "DEMO",
+            "strategy": Config.STRATEGY,
             "risk": Config.RISK_PER_TRADE,
             "sl": Config.STOP_LOSS_PIPS,
             "tp": Config.TAKE_PROFIT_PIPS,
@@ -269,7 +276,7 @@ async function tick(){
                           :'<tr><td colspan="6" class="mut">No trades logged yet</td></tr>';
   document.querySelector('#trades tbody').innerHTML=tr;
   document.getElementById('foot').textContent=
-    `Risk $${c.risk}/trade · SL ${c.sl} / TP ${c.tp} pips · RSI ${c.rsi_os}/${c.rsi_ob} · ${c.pairs} pairs · auto-refresh`;
+    `Strategy: ${c.strategy} · Risk $${c.risk}/trade · SL ${c.sl} / TP ${c.tp} pips · ${c.pairs} pairs · auto-refresh`;
 }
 tick(); setInterval(tick, 3000);
 </script>
