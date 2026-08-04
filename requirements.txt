@@ -1,0 +1,7 @@
+# Runtime dependencies for live trading / API access.
+# The models, risk engine, strategies and their tests run without these.
+requests>=2.31
+cryptography>=42.0
+
+# Dev / test
+pytest>=8.0
