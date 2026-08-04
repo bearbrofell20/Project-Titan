@@ -1,13 +1,27 @@
-# Project Titan — Kalshi Auto Trader
+# Project Titan — Auto Trader
 
-A small, safety-first automated trading bot for the
-[Kalshi](https://kalshi.com) event-contracts exchange, written in Python.
+A small, safety-first automated trading toolkit, written in Python. It currently
+covers two venues:
+
+| Venue  | Market            | Module            | Command                     |
+|--------|-------------------|-------------------|-----------------------------|
+| Kalshi | event contracts   | `kalshi_trader/`  | `python -m kalshi_trader …` |
+| OANDA  | forex (spot FX)   | `oanda_trader.py` | `python oanda_trader.py`    |
+
+Both fetch live market data, run a strategy, gate every proposed trade through
+hard risk limits, and then either **log** the trade or submit it. The pure logic
+— strategies, risk, sizing, indicators — is unit-tested and needs no network or
+credentials to run. See the **Forex (OANDA)** section below for that bot.
+
+---
+
+## Kalshi — event-contracts trader
+
+A safety-first bot for the [Kalshi](https://kalshi.com) event-contracts exchange.
 
 It fetches live markets, runs a pluggable strategy over them, gates every
 proposed trade through hard risk limits, and then either **logs** the trade
-(dry-run, the default) or submits it to Kalshi (live). Everything that matters —
-strategies, risk, order modelling — is pure Python with unit tests and needs no
-network or credentials to run.
+(dry-run, the default) or submits it to Kalshi (live).
 
 > ⚠️ **Trading involves real money and real risk.** Prediction-market contracts
 > can expire worthless. This project defaults to dry-run and ships conservative
@@ -115,6 +129,71 @@ class BuyEverythingCheap(Strategy):
 
 Register it in `kalshi_trader/strategies/__init__.py`'s `REGISTRY` to expose it
 to the CLI.
+
+---
+
+## Forex (OANDA) — multi-pair momentum scalper
+
+`oanda_trader.py` scans 13 currency pairs on 5-minute candles and trades a
+momentum signal (RSI dip/rally confirmed by a short-term trend), sizing every
+order to risk a fixed dollar amount and attaching a stop-loss and take-profit.
+
+### Configure
+
+Use a **practice** account and token to start.
+
+```bash
+export OANDA_API_TOKEN='your-practice-token'
+export OANDA_ACCOUNT_ID='101-001-XXXXXXX-001'
+# or: cp oanda_config.example.py oanda_config.py  and fill in API_TOKEN
+```
+
+`oanda_config.py`, `trade_logs/` and `KILL_SWITCH.txt` are git-ignored.
+
+### Run
+
+```bash
+python oanda_trader.py            # demo endpoint, places practice orders
+OANDA_DRY_RUN=true python oanda_trader.py   # log intended orders, send nothing
+```
+
+Stop it any time by creating the kill-switch file: `touch KILL_SWITCH.txt`.
+
+### Key settings (env vars)
+
+| Variable                 | Default                          | Meaning                                   |
+|--------------------------|----------------------------------|-------------------------------------------|
+| `OANDA_API_TOKEN`        | —                                | v20 API token (required)                  |
+| `OANDA_ACCOUNT_ID`       | `101-001-39975042-001`           | account to trade                          |
+| `OANDA_API_URL`          | `https://api-fxpractice.oanda.com` | demo endpoint; live is `api-fxtrade`    |
+| `OANDA_RISK_PER_TRADE`   | `10.0`                           | USD risked per trade                      |
+| `OANDA_DRY_RUN`          | `false`                          | `true` = log only, submit nothing         |
+| `OANDA_ALLOW_LIVE`       | `false`                          | must be `yes` to use the real-money endpoint |
+| `OANDA_MAX_OPEN_TRADES`  | `6`                              | cap on concurrent open positions          |
+
+### Safety model
+
+* Defaults to the **practice** endpoint. The live (`fxtrade`) endpoint is
+  **refused at startup** unless `OANDA_ALLOW_LIVE=yes` is set explicitly.
+* `OANDA_DRY_RUN=true` logs intended orders without sending any.
+* One position per instrument and a `MAX_OPEN_TRADES` cap prevent the loop from
+  stacking positions every candle.
+
+### Fixes applied to the original scalper
+
+This integrated version corrects two bugs in the first draft:
+
+1. **Position sizing was ~100× too large.** The old pip-cost constant sized
+   EUR/USD at 500,000 units (~$1,000 risk) for a nominal $10 trade. Sizing now
+   converts each pair's pip value into USD, so `$10` means `$10`.
+2. **JPY-pair SL/TP prices were rounded to 5 decimals** and rejected by OANDA;
+   they now use the correct 3-decimal precision.
+
+> ⚠️ Momentum/RSI scalping has no guaranteed edge, spreads and slippage eat
+> scalps, and forex leverage amplifies losses. Prove it on the demo account
+> first.
+
+---
 
 ## Test
 
