@@ -2,22 +2,28 @@
 """
 OANDA Multi-Pair 5-Minute Momentum Scalper  (Project Titan — Forex Division)
 
-Momentum-following strategy across many pairs on 5-minute candles.
+Momentum-following strategy across many pairs on 5-minute candles, built to run
+safely against an OANDA v20 *practice* account.
 
-This is the bug-fixed, integrated version of the original scalper. Behaviour that
-was preserved: the RSI + trend signal logic, the poll loop, the kill switch, and
-per-candle de-duplication. What changed (see README "Forex" section):
+Design notes / why the code looks the way it does:
 
-  * Position sizing is now correct. The original risked ~100x the intended
-    amount because of a bad pip-cost constant; sizing now converts the pip value
-    into account currency (USD) per pair, so `$RISK_PER_TRADE` means what it says.
-  * JPY-pair stop/take-profit prices are rounded to the instrument's real
-    precision (3 decimals) instead of 5, so those orders are no longer rejected.
-  * A DRY_RUN switch logs intended orders without sending them, and a guard
-    blocks the live (fxtrade) endpoint unless it is explicitly allowed.
-  * Importing the module no longer has side effects (logging is set up in main).
+  * Signals fire on **completed** candles only. OANDA streams the in-progress
+    bar as the last element of the candle list; acting on it would evaluate a
+    flickering, unfinished candle. We drop incomplete bars everywhere.
+  * Position sizing converts each pair's pip value into the account currency
+    (USD) so `$RISK_PER_TRADE` is honoured. (The account currency is verified at
+    startup — non-USD accounts are refused rather than silently mis-sized.)
+  * The stop-loss is sent as a fill-relative **distance**, so OANDA anchors it to
+    the real fill price instead of an estimate. The take-profit uses an absolute
+    price from the last closed candle (OANDA's TP-on-fill takes a price, not a
+    distance).
+  * API GETs retry on transient network errors; order POSTs never retry, so a
+    dropped response can't cause a double fill.
+  * Importing the module has no side effects (logging is configured in main()),
+    which keeps the pure logic unit-testable.
 
-Mode: DEMO practice endpoint by default (safe testing).
+Mode: DEMO practice endpoint by default. The live (fxtrade) endpoint is refused
+unless OANDA_ALLOW_LIVE is set explicitly.
 """
 
 import os
@@ -26,9 +32,9 @@ import time
 import logging
 from datetime import datetime
 from collections import defaultdict
+from pathlib import Path
 
 import requests
-from pathlib import Path
 
 # ============================================================================
 # CONFIGURATION
@@ -42,11 +48,22 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    return int(raw) if raw not in (None, "") else default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    return float(raw) if raw not in (None, "") else default
+
+
 class Config:
     # OANDA Setup ------------------------------------------------------------
     ACCOUNT_ID = os.getenv("OANDA_ACCOUNT_ID", "101-001-39975042-001")
     # Practice (demo) by default; the live endpoint is api-fxtrade.oanda.com.
     API_URL = os.getenv("OANDA_API_URL", "https://api-fxpractice.oanda.com")
+    ACCOUNT_CURRENCY = "USD"  # sizing math assumes USD; verified at startup
 
     INSTRUMENTS = [
         "EUR_USD", "GBP_USD", "USD_JPY", "USD_CHF", "AUD_USD",
@@ -56,19 +73,20 @@ class Config:
 
     # Trading Parameters -----------------------------------------------------
     TIMEFRAME = "M5"                    # 5-minute candles
-    RISK_PER_TRADE = float(os.getenv("OANDA_RISK_PER_TRADE", "10.0"))  # USD
+    CANDLE_COUNT = _env_int("OANDA_CANDLE_COUNT", 60)
+    RISK_PER_TRADE = _env_float("OANDA_RISK_PER_TRADE", 10.0)  # in ACCOUNT_CURRENCY
 
-    # Momentum Thresholds ----------------------------------------------------
-    RSI_PERIOD = 14
-    RSI_OVERSOLD = 30                   # dip within an uptrend -> buy
-    RSI_OVERBOUGHT = 70                 # rally within a downtrend -> sell
+    # Momentum Thresholds (env-tunable) --------------------------------------
+    RSI_PERIOD = _env_int("OANDA_RSI_PERIOD", 14)
+    RSI_OVERSOLD = _env_float("OANDA_RSI_OVERSOLD", 30)     # dip within uptrend -> buy
+    RSI_OVERBOUGHT = _env_float("OANDA_RSI_OVERBOUGHT", 70)  # rally within downtrend -> sell
+    TREND_PERIOD = _env_int("OANDA_TREND_PERIOD", 3)
 
     # Risk Management --------------------------------------------------------
-    STOP_LOSS_PIPS = 20
-    TAKE_PROFIT_PIPS = 40
-    MAX_OPEN_TRADES = int(os.getenv("OANDA_MAX_OPEN_TRADES", "6"))
-    # One position per instrument at a time (no stacking on every candle).
-    ONE_POSITION_PER_INSTRUMENT = True
+    STOP_LOSS_PIPS = _env_int("OANDA_STOP_LOSS_PIPS", 20)
+    TAKE_PROFIT_PIPS = _env_int("OANDA_TAKE_PROFIT_PIPS", 40)
+    MAX_OPEN_TRADES = _env_int("OANDA_MAX_OPEN_TRADES", 6)
+    ONE_POSITION_PER_INSTRUMENT = True   # no stacking on every candle
 
     # Safety -----------------------------------------------------------------
     # DRY_RUN: log intended orders, send nothing. Default False so the demo
@@ -78,7 +96,7 @@ class Config:
     ALLOW_LIVE = _env_bool("OANDA_ALLOW_LIVE", False)
 
     # Operational ------------------------------------------------------------
-    POLL_INTERVAL = int(os.getenv("OANDA_POLL_INTERVAL", "30"))
+    POLL_INTERVAL = _env_int("OANDA_POLL_INTERVAL", 30)
     KILL_SWITCH_FILE = os.getenv("OANDA_KILL_SWITCH_FILE", "KILL_SWITCH.txt")
 
     # Logging ----------------------------------------------------------------
@@ -99,6 +117,8 @@ def validate_config(api_token: str):
         problems.append("OANDA_ACCOUNT_ID is missing")
     if Config.RISK_PER_TRADE <= 0:
         problems.append("RISK_PER_TRADE must be positive")
+    if Config.STOP_LOSS_PIPS <= 0:
+        problems.append("STOP_LOSS_PIPS must be positive")
     if Config.is_live_endpoint() and not Config.ALLOW_LIVE:
         problems.append(
             "API_URL points at the LIVE endpoint but OANDA_ALLOW_LIVE is not set. "
@@ -153,6 +173,11 @@ def price_decimals(instrument: str) -> int:
     return 3 if "JPY" in instrument else 5
 
 
+def completed_candles(candles):
+    """Drop OANDA's in-progress (incomplete) trailing candle."""
+    return [c for c in candles if c.get("complete")]
+
+
 # ============================================================================
 # OANDA API CLIENT
 # ============================================================================
@@ -169,21 +194,44 @@ class OandaClient:
             "Content-Type": "application/json",
         }
 
+    def _request(self, method, path, *, params=None, body=None, retry=True):
+        """Perform a request. Returns parsed JSON dict (or None on failure).
+
+        GETs retry on transient network errors; POSTs never retry so a dropped
+        response can't produce a duplicate order. HTTP error bodies are logged.
+        """
+        url = f"{Config.API_URL}{path}"
+        attempts = 3 if retry else 1
+        for attempt in range(attempts):
+            try:
+                resp = requests.request(
+                    method, url, headers=self.headers,
+                    params=params, json=body, timeout=10,
+                )
+                try:
+                    data = resp.json() if resp.content else {}
+                except ValueError:
+                    data = {}
+                if resp.status_code >= 400:
+                    logger.error(
+                        f"{method} {path} -> {resp.status_code}: {resp.text[:400]}"
+                    )
+                return data
+            except requests.exceptions.RequestException as e:
+                if attempt < attempts - 1:
+                    time.sleep(2 ** attempt)
+                    continue
+                logger.error(f"{method} {path} failed after {attempts} attempt(s): {e}")
+                return None
+
     def get_candles(self, instrument, granularity="M5", count=100):
-        """Fetch recent candles for an instrument."""
-        try:
-            url = f"{Config.API_URL}/v3/instruments/{instrument}/candles"
-            params = {
-                "granularity": granularity,
-                "count": count,
-                "price": "MBA",  # Mid, Bid, Ask
-            }
-            response = requests.get(url, headers=self.headers, params=params, timeout=10)
-            response.raise_for_status()
-            return response.json().get("candles", [])
-        except Exception as e:
-            logger.error(f"Error fetching candles for {instrument}: {e}")
-            return []
+        """Fetch recent candles for an instrument (oldest -> newest)."""
+        data = self._request(
+            "GET",
+            f"/v3/instruments/{instrument}/candles",
+            params={"granularity": granularity, "count": count, "price": "M"},
+        )
+        return (data or {}).get("candles", [])
 
     def get_price(self, instrument):
         """Latest mid close price for an instrument, or None."""
@@ -196,81 +244,77 @@ class OandaClient:
             return None
 
     def get_account_details(self):
-        """Fetch current account balance and margin info."""
-        try:
-            url = f"{Config.API_URL}/v3/accounts/{Config.ACCOUNT_ID}"
-            response = requests.get(url, headers=self.headers, timeout=10)
-            response.raise_for_status()
-            return response.json().get("account", {})
-        except Exception as e:
-            logger.error(f"Error fetching account details: {e}")
-            return {}
+        """Fetch current account balance, currency and margin info."""
+        data = self._request("GET", f"/v3/accounts/{Config.ACCOUNT_ID}")
+        return (data or {}).get("account", {})
 
     def get_open_instruments(self):
         """Set of instruments with a currently open position."""
-        try:
-            url = f"{Config.API_URL}/v3/accounts/{Config.ACCOUNT_ID}/openPositions"
-            response = requests.get(url, headers=self.headers, timeout=10)
-            response.raise_for_status()
-            positions = response.json().get("positions", [])
-            return {p["instrument"] for p in positions}
-        except Exception as e:
-            logger.error(f"Error fetching open positions: {e}")
+        data = self._request("GET", f"/v3/accounts/{Config.ACCOUNT_ID}/openPositions")
+        if not data:
             return set()
+        return {p["instrument"] for p in data.get("positions", [])}
 
     def place_order(self, instrument, units, entry_price, stop_loss_pips, take_profit_pips):
-        """Place a market order with SL and TP at the correct price precision."""
-        try:
-            ps = pip_size(instrument)
-            decimals = price_decimals(instrument)
+        """Place a market order with a fill-relative SL distance and a TP price."""
+        ps = pip_size(instrument)
+        decimals = price_decimals(instrument)
 
-            if units > 0:  # BUY
-                sl_price = entry_price - (stop_loss_pips * ps)
-                tp_price = entry_price + (take_profit_pips * ps)
-            else:          # SELL
-                sl_price = entry_price + (stop_loss_pips * ps)
-                tp_price = entry_price - (take_profit_pips * ps)
+        sl_distance = stop_loss_pips * ps
+        if units > 0:   # BUY
+            tp_price = entry_price + take_profit_pips * ps
+        else:           # SELL
+            tp_price = entry_price - take_profit_pips * ps
 
-            order_body = {
-                "order": {
-                    "instrument": instrument,
-                    "units": str(int(units)),
-                    "type": "MARKET",
-                    "timeInForce": "FOK",
-                    "takeProfitOnFill": {"price": f"{tp_price:.{decimals}f}"},
-                    "stopLossOnFill": {"price": f"{sl_price:.{decimals}f}"},
-                }
+        order_body = {
+            "order": {
+                "instrument": instrument,
+                "units": str(int(units)),
+                "type": "MARKET",
+                "timeInForce": "FOK",
+                "positionFill": "DEFAULT",
+                # SL as a distance -> anchored to the real fill price by OANDA.
+                "stopLossOnFill": {"distance": f"{sl_distance:.{decimals}f}"},
+                "takeProfitOnFill": {"price": f"{tp_price:.{decimals}f}"},
             }
+        }
 
-            if Config.DRY_RUN:
-                logger.info(
-                    f"[DRY-RUN] would place {instrument} {int(units)} units @ "
-                    f"~{entry_price:.{decimals}f} | SL {sl_price:.{decimals}f} | "
-                    f"TP {tp_price:.{decimals}f}"
-                )
-                return {"dryRun": True, "sl": sl_price, "tp": tp_price}
+        if Config.DRY_RUN:
+            logger.info(
+                f"[DRY-RUN] would place {instrument} {int(units)} units @ "
+                f"~{entry_price:.{decimals}f} | SL dist {sl_distance:.{decimals}f} | "
+                f"TP {tp_price:.{decimals}f}"
+            )
+            return {"dryRun": True, "sl_distance": sl_distance, "tp": tp_price,
+                    "fill_price": entry_price}
 
-            url = f"{Config.API_URL}/v3/accounts/{Config.ACCOUNT_ID}/orders"
-            response = requests.post(url, headers=self.headers, json=order_body, timeout=10)
-            response.raise_for_status()
-
-            order_data = response.json()
-            if "orderFillTransaction" in order_data:
-                logger.info(
-                    f"✓ ORDER FILLED: {instrument} {int(units)} units @ "
-                    f"{order_data['orderFillTransaction']['price']} | "
-                    f"SL: {sl_price:.{decimals}f} | TP: {tp_price:.{decimals}f}"
-                )
-                return order_data
-            logger.warning(f"Order not filled for {instrument}: {order_data}")
+        data = self._request(
+            "POST", f"/v3/accounts/{Config.ACCOUNT_ID}/orders",
+            body=order_body, retry=False,
+        )
+        if data is None:
             return None
-        except Exception as e:
-            logger.error(f"Error placing order for {instrument}: {e}")
-            return None
+
+        fill = data.get("orderFillTransaction")
+        if fill:
+            logger.info(
+                f"✓ ORDER FILLED: {instrument} {int(units)} units @ {fill.get('price')} "
+                f"| SL dist {sl_distance:.{decimals}f} | TP {tp_price:.{decimals}f}"
+            )
+            data["fill_price"] = float(fill.get("price", entry_price))
+            data["tp"] = tp_price
+            data["sl_distance"] = sl_distance
+            return data
+
+        # Business reject (arrives as 201/400 with a reject/cancel transaction).
+        reject = data.get("orderRejectTransaction") or data.get("orderCancelTransaction")
+        reason = reject.get("reason") if reject else data.get("errorMessage", "unknown")
+        logger.warning(f"Order NOT filled for {instrument}: {reason}")
+        return None
 
 
 # ============================================================================
-# MOMENTUM DETECTOR   (unchanged strategy logic)
+# MOMENTUM DETECTOR   (strategy logic preserved)
 # ============================================================================
 
 
@@ -310,13 +354,17 @@ class MomentumDetector:
 
     @staticmethod
     def get_signal(candles, instrument):
-        """Combined momentum signal: RSI + trend confirmation -> 'BUY'/'SELL'/None."""
-        if len(candles) < 20:
+        """Combined momentum signal: RSI + trend confirmation -> 'BUY'/'SELL'/None.
+
+        `candles` are expected to be completed candles.
+        """
+        needed = max(20, Config.RSI_PERIOD + 1, Config.TREND_PERIOD)
+        if len(candles) < needed:
             return None
 
         closes = [float(c["mid"]["c"]) for c in candles]
         rsi = MomentumDetector.calculate_rsi(closes, Config.RSI_PERIOD)
-        trend = MomentumDetector.detect_trend(candles, 3)
+        trend = MomentumDetector.detect_trend(candles, Config.TREND_PERIOD)
         if rsi is None or trend is None:
             return None
 
@@ -330,12 +378,12 @@ class MomentumDetector:
 
 
 # ============================================================================
-# POSITION MANAGER   (fixed sizing)
+# POSITION MANAGER   (correct sizing)
 # ============================================================================
 
 
 class PositionManager:
-    """Size positions so each trade risks exactly RISK_PER_TRADE in USD."""
+    """Size positions so each trade risks exactly RISK_PER_TRADE (USD)."""
 
     @staticmethod
     def calculate_units(instrument, stop_loss_pips, quote_to_usd, risk_usd=None):
@@ -412,7 +460,7 @@ class OandaBot:
         self.trade_logger = TradeLogger(Config.STATS_FILE)
         self.last_candle_time = defaultdict(int)
         self.running = True
-        self._rate_cache = {}  # quote-currency -> USD rate, refreshed each cycle
+        self._rate_cache = {}  # quote currency -> USD rate, refreshed each cycle
 
         mode = "DRY-RUN" if Config.DRY_RUN else ("LIVE" if Config.is_live_endpoint() else "DEMO")
         logger.info("=" * 60)
@@ -426,6 +474,28 @@ class OandaBot:
         logger.info(f"Kill switch: create '{Config.KILL_SWITCH_FILE}' to stop")
         logger.info("=" * 60)
 
+    # -- startup checks ----------------------------------------------------
+    def preflight(self):
+        """Verify the account is reachable and its currency matches our sizing."""
+        acct = self.client.get_account_details()
+        if not acct:
+            logger.error("Preflight failed: could not fetch account details "
+                         "(check the API token and OANDA_ACCOUNT_ID).")
+            return False
+        currency = acct.get("currency")
+        if currency != Config.ACCOUNT_CURRENCY:
+            logger.error(
+                f"Account currency is {currency!r}, but sizing assumes "
+                f"{Config.ACCOUNT_CURRENCY}. Aborting to avoid mis-sizing — "
+                f"use a {Config.ACCOUNT_CURRENCY} practice account."
+            )
+            return False
+        logger.info(
+            f"Preflight OK — account {Config.ACCOUNT_ID} currency={currency} "
+            f"balance=${float(acct.get('balance', 0)):.2f}"
+        )
+        return True
+
     # -- helpers -----------------------------------------------------------
     def check_kill_switch(self):
         if os.path.exists(Config.KILL_SWITCH_FILE):
@@ -435,7 +505,7 @@ class OandaBot:
         return False
 
     def quote_to_usd(self, instrument):
-        """Rate to convert the pair's quote currency into USD (with caching)."""
+        """Rate to convert the pair's quote currency into USD (cached per cycle)."""
         quote = instrument.split("_")[1]
         if quote == "USD":
             return 1.0
@@ -443,7 +513,7 @@ class OandaBot:
             return self._rate_cache[quote]
 
         rate = None
-        direct = self.client.get_price(f"{quote}_USD")  # e.g. GBP_USD
+        direct = self.client.get_price(f"{quote}_USD")   # e.g. GBP_USD
         if direct:
             rate = direct
         else:
@@ -459,13 +529,16 @@ class OandaBot:
     # -- per-pair scan -----------------------------------------------------
     def scan_pair(self, instrument, open_instruments):
         try:
-            candles = self.client.get_candles(instrument, granularity="M5", count=50)
-            if not candles:
+            raw = self.client.get_candles(instrument, granularity=Config.TIMEFRAME,
+                                          count=Config.CANDLE_COUNT)
+            candles = completed_candles(raw)
+            if len(candles) < 20:
                 return
 
+            # De-dup on the latest *completed* candle: act once per closed bar.
             latest_time = int(float(candles[-1]["time"]))
             if latest_time <= self.last_candle_time[instrument]:
-                return  # no new candle yet
+                return
             self.last_candle_time[instrument] = latest_time
 
             signal = MomentumDetector.get_signal(candles, instrument)
@@ -496,14 +569,19 @@ class OandaBot:
             if order:
                 open_instruments.add(instrument)  # avoid re-entering same cycle
                 self.trade_logger.log_trade(
-                    instrument, signal, units, entry_price,
-                    sl=order.get("sl", 0), tp=order.get("tp", 0),
+                    instrument, signal, units,
+                    order.get("fill_price", entry_price),
+                    sl=order.get("sl_distance", 0), tp=order.get("tp", 0),
                 )
         except Exception as e:
             logger.error(f"Error scanning {instrument}: {e}")
 
     # -- main loop ---------------------------------------------------------
     def run(self):
+        if not self.preflight():
+            logger.error("Aborting: preflight checks failed.")
+            return
+
         cycle = 0
         while self.running:
             cycle += 1

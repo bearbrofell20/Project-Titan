@@ -4,8 +4,35 @@ import oanda_trader as ot
 from oanda_trader import Config, MomentumDetector, PositionManager
 
 
-def _candle(close):
-    return {"mid": {"c": str(close)}, "time": "0"}
+def _candle(close, complete=True):
+    return {"mid": {"c": str(close)}, "time": "0", "complete": complete}
+
+
+# --- completed-candle filtering (only act on closed bars) -----------------
+def test_completed_candles_drops_incomplete_trailing_bar():
+    raw = [_candle(1), _candle(2), _candle(3, complete=False)]
+    done = ot.completed_candles(raw)
+    assert len(done) == 2
+    assert all(c["complete"] for c in done)
+
+
+def test_completed_candles_all_complete():
+    raw = [_candle(1), _candle(2)]
+    assert len(ot.completed_candles(raw)) == 2
+
+
+# --- dry-run order path (no network) --------------------------------------
+def test_dry_run_order_returns_shape_without_network():
+    original = Config.DRY_RUN
+    try:
+        Config.DRY_RUN = True
+        client = ot.OandaClient("faketoken")
+        res = client.place_order("USD_JPY", 7500, 150.123, 20, 40)
+        assert res["dryRun"] is True
+        assert res["fill_price"] == 150.123
+        assert res["tp"] == 150.123 + 40 * 0.01  # BUY tp above entry
+    finally:
+        Config.DRY_RUN = original
 
 
 # --- position sizing (the previously broken part) -------------------------
