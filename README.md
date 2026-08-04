@@ -220,6 +220,19 @@ KALSHI_ENABLE=true python run_all.py     # both bots + dashboard
 
 The Kalshi bot defaults to dry-run (`KALSHI_DRY_RUN=true`) until you opt in.
 
+### Did it pass? — performance report
+
+At the end of a demo run, grade it:
+
+```bash
+python report.py        # all closed trades on the account
+python report.py 7      # just the last 7 days
+```
+
+Pulls closed trades from OANDA (realised P/L, the source of truth) and prints
+win rate, net P/L, profit factor, best/worst, and a per-instrument breakdown.
+This is your go/no-go before ever risking real money.
+
 ### Running 24/7
 
 The bot and dashboard are long-running processes. Run them together with:
