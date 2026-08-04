@@ -1,0 +1,21 @@
+# 24/7 deployment: `docker compose up -d` then open http://localhost:8080
+#
+# Put your secrets in a local `.env` file next to this one (git-ignored):
+#   OANDA_API_TOKEN=your-practice-token
+#   OANDA_ACCOUNT_ID=101-001-39975042-001
+#   OANDA_STRATEGY=ema_pullback
+services:
+  titan:
+    build: .
+    restart: unless-stopped          # survives crashes and host reboots
+    ports:
+      - "8080:8080"                  # dashboard
+    environment:
+      OANDA_API_TOKEN: "${OANDA_API_TOKEN}"
+      OANDA_ACCOUNT_ID: "${OANDA_ACCOUNT_ID:-101-001-39975042-001}"
+      OANDA_API_URL: "${OANDA_API_URL:-https://api-fxpractice.oanda.com}"
+      OANDA_STRATEGY: "${OANDA_STRATEGY:-ema_pullback}"
+      OANDA_RISK_PER_TRADE: "${OANDA_RISK_PER_TRADE:-10}"
+      OANDA_DRY_RUN: "${OANDA_DRY_RUN:-false}"
+    volumes:
+      - ./trade_logs:/data/trade_logs # persist trade + bot logs on the host

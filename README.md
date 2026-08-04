@@ -204,6 +204,59 @@ independently of the bot; run both together. Your token stays server-side
 (the browser only talks to localhost). Knobs: `DASHBOARD_PORT` (default 8080),
 `DASHBOARD_REFRESH` seconds (default 8).
 
+### Running 24/7
+
+The bot and dashboard are long-running processes. Run them together with:
+
+```bash
+python run_all.py     # bot trades; dashboard on http://localhost:8080
+```
+
+For always-on operation you want a host that stays up. Options, easiest first:
+
+**Docker (recommended — any always-on machine or cloud VM):**
+
+```bash
+# put OANDA_API_TOKEN, OANDA_ACCOUNT_ID, OANDA_STRATEGY in a local .env
+docker compose up -d --build     # runs detached, restarts on crash/reboot
+docker compose logs -f           # watch it;  open http://localhost:8080
+docker compose down              # stop
+```
+
+**systemd (Linux VPS / Raspberry Pi):** see `deploy/titan.service` — copy it to
+`/etc/systemd/system/`, put your vars in `/etc/titan/titan.env`, then
+`sudo systemctl enable --now titan`. It restarts on crash and on reboot.
+
+**Quick and dirty (any Linux/Mac box you leave on):**
+
+```bash
+nohup python run_all.py > titan.out 2>&1 &   # keeps running after you log out
+```
+
+A tiny VPS (~$5/month) or a Raspberry Pi left on at home is the cheapest true
+24/7 setup. The forex market runs ~24/5 (closed weekends), so the bot idles over
+the weekend and resumes Monday automatically.
+
+**What about Google Colab?** It works for a *short, supervised* run but **not for
+real 24/7**: Colab disconnects after ~90 min idle, caps sessions around 12 h, and
+its terms discourage unattended background compute — it will stop and the bot
+stops with it. If you just want to try it from Colab, in a cell:
+
+```python
+!pip -q install requests
+import os
+os.environ["OANDA_API_TOKEN"]  = "your-practice-token"
+os.environ["OANDA_ACCOUNT_ID"] = "101-001-39975042-001"
+os.environ["OANDA_STRATEGY"]   = "ema_pullback"
+!git clone https://github.com/bearbrofell20/project-titan.git
+%cd project-titan
+!python oanda_trader.py          # runs until the Colab session drops
+```
+
+(The dashboard needs a public tunnel to view from Colab, e.g. `pyngrok`, since
+its server is inside the Colab VM — but given the disconnect limits, a real host
+is the better answer.)
+
 ### Safety model
 
 * Defaults to the **practice** endpoint. The live (`fxtrade`) endpoint is

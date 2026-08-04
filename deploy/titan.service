@@ -1,0 +1,32 @@
+# systemd service for running the bot + dashboard 24/7 on a Linux host/VPS.
+#
+# Setup:
+#   sudo cp deploy/titan.service /etc/systemd/system/titan.service
+#   sudo mkdir -p /etc/titan && sudo nano /etc/titan/titan.env   # add your vars
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now titan
+#   journalctl -u titan -f      # follow logs
+#
+# Example /etc/titan/titan.env (root-only readable — chmod 600):
+#   OANDA_API_TOKEN=your-practice-token
+#   OANDA_ACCOUNT_ID=101-001-39975042-001
+#   OANDA_STRATEGY=ema_pullback
+#   OANDA_RISK_PER_TRADE=10
+
+[Unit]
+Description=Project Titan — OANDA auto trader + dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust User and WorkingDirectory to your setup.
+User=titan
+WorkingDirectory=/opt/project-titan
+EnvironmentFile=/etc/titan/titan.env
+ExecStart=/usr/bin/python3 run_all.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
