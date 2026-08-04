@@ -1,0 +1,5 @@
+{
+  "_comment": "Map each market ticker to your estimated fair Yes price in cents (1-99). The threshold strategy buys Yes when the ask is >= edge_cents below fair, and No when the bid is >= edge_cents above fair. Replace these placeholders with real tickers from `python -m kalshi_trader markets`.",
+  "EXAMPLE-TICKER-1": 62,
+  "EXAMPLE-TICKER-2": 35
+}

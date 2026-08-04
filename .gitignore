@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Kalshi credentials — never commit private keys
+*.pem
+*.key
+kalshi_private_key*
