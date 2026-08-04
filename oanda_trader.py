@@ -303,7 +303,7 @@ class OandaClient:
                 f"TP {tp_price:.{decimals}f}"
             )
             return {"dryRun": True, "sl_distance": sl_distance, "tp": tp_price,
-                    "fill_price": entry_price}
+                    "fill_price": entry_price, "trade_id": None}
 
         data = self._request(
             "POST", f"/v3/accounts/{Config.ACCOUNT_ID}/orders",
@@ -314,13 +314,16 @@ class OandaClient:
 
         fill = data.get("orderFillTransaction")
         if fill:
+            trade_id = fill.get("tradeOpened", {}).get("tradeID")
             logger.info(
                 f"✓ ORDER FILLED: {instrument} {int(units)} units @ {fill.get('price')} "
-                f"| SL dist {sl_distance:.{decimals}f} | TP {tp_price:.{decimals}f}"
+                f"| trade {trade_id} | SL dist {sl_distance:.{decimals}f} | "
+                f"TP {tp_price:.{decimals}f}"
             )
             data["fill_price"] = float(fill.get("price", entry_price))
             data["tp"] = tp_price
             data["sl_distance"] = sl_distance
+            data["trade_id"] = trade_id
             return data
 
         # Business reject (arrives as 201/400 with a reject/cancel transaction).
@@ -328,6 +331,23 @@ class OandaClient:
         reason = reject.get("reason") if reject else data.get("errorMessage", "unknown")
         logger.warning(f"Order NOT filled for {instrument}: {reason}")
         return None
+
+    def close_trade(self, trade_id):
+        """Close a single trade by its id (never touches other positions).
+
+        Preferred over closing 'ALL' units of an instrument, which would also
+        close any pre-existing position the bot did not open.
+        """
+        data = self._request(
+            "PUT", f"/v3/accounts/{Config.ACCOUNT_ID}/trades/{trade_id}/close",
+            body={"units": "ALL"}, retry=False,
+        )
+        if data is None:
+            return None
+        fill = data.get("orderFillTransaction")
+        if fill:
+            logger.info(f"✓ CLOSED trade {trade_id} @ {fill.get('price')} | pl {fill.get('pl')}")
+        return data
 
 
 # ============================================================================
@@ -511,6 +531,11 @@ class OandaBot:
             f"Preflight OK — account {Config.ACCOUNT_ID} currency={currency} "
             f"balance=${float(acct.get('balance', 0)):.2f}"
         )
+        # Surface positions that already exist so the operator isn't surprised;
+        # the bot leaves these alone (it only manages trades it opens).
+        preexisting = self.client.get_open_instruments()
+        if preexisting:
+            logger.info(f"Pre-existing open positions (left untouched): {sorted(preexisting)}")
         return True
 
     # -- helpers -----------------------------------------------------------
