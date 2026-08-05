@@ -215,12 +215,17 @@ INDEX_HTML = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Project Titan — Dashboard</title>
 <style>
-  :root{--bg:#0d1117;--card:#161b22;--line:#222c3a;--fg:#e6edf3;--mut:#8b949e;
-        --green:#2ea043;--red:#f85149;--amber:#d29922;--blue:#388bfd;--purple:#a371f7;}
-  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);
-    font:14px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  /* Neon terminal palette: neon green, black, grey (single-theme by design). */
+  :root{--bg:#000000;--card:#0c100e;--line:#1c231f;--fg:#cdd6d1;--mut:#8f9995;
+        --green:#39ff14;--red:#8f9995;--amber:#8f9995;--blue:#39ff14;--purple:#57e06a;}
+  *{box-sizing:border-box}
+  body{margin:0;color:var(--fg);
+    background:radial-gradient(1100px 460px at 50% -12%, #08120a 0%, var(--bg) 62%);
+    font:14px/1.5 ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace}
   header{display:flex;align-items:center;gap:12px;padding:16px 22px;border-bottom:1px solid var(--line)}
-  header h1{font-size:16px;margin:0;font-weight:650}
+  header h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.14em;color:var(--green);
+    text-shadow:0 0 16px rgba(57,255,20,.45)}
+  .card .v, .pos{text-shadow:0 0 12px rgba(57,255,20,.18)}
   .pill{font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--mut)}
   .pill.on{color:var(--green);border-color:var(--green)}
   .pill.demo{color:var(--blue);border-color:var(--blue)}
