@@ -289,3 +289,19 @@ def test_stochastic_none_without_enough_history():
 def test_stochastic_registered():
     assert "stochastic" in ot.STRATEGIES
     assert set(ot.STRATEGIES) == {"rsi", "ema_pullback", "breakout", "bollinger", "stochastic"}
+
+
+# --- loss-cut rule (-X% of margin) -----------------------------------------
+def test_should_cut_loss_triggers_at_threshold():
+    assert ot.should_cut_loss(-2.0, 100.0, 2) is True    # exactly -2%
+    assert ot.should_cut_loss(-3.0, 100.0, 2) is True    # worse
+    assert ot.should_cut_loss(-1.99, 100.0, 2) is False  # not yet
+    assert ot.should_cut_loss(5.0, 100.0, 2) is False    # a profit
+
+
+def test_should_cut_loss_guards_bad_margin():
+    assert ot.should_cut_loss(-50.0, 0.0, 2) is False
+
+
+def test_default_strategy_is_the_winner():
+    assert Config.STRATEGY == "stochastic"

@@ -78,7 +78,8 @@ class Config:
     RISK_PER_TRADE = _env_float("OANDA_RISK_PER_TRADE", 10.0)  # in ACCOUNT_CURRENCY
 
     # Strategy selection -----------------------------------------------------
-    STRATEGY = os.getenv("OANDA_STRATEGY", "rsi")  # "rsi" or "ema_pullback"
+    # Default is the backtest winner (stochastic mean-reversion).
+    STRATEGY = os.getenv("OANDA_STRATEGY", "stochastic")
 
     # Momentum (RSI) thresholds (env-tunable) --------------------------------
     RSI_PERIOD = _env_int("OANDA_RSI_PERIOD", 14)
@@ -115,6 +116,9 @@ class Config:
     # Profit-take rule: close a trade once its unrealized profit reaches this
     # percent of the margin committed to that trade ("10% back -> sell").
     PROFIT_TAKE_PCT = _env_float("OANDA_PROFIT_TAKE_PCT", 10.0)
+    # Loss-cut rule: close a trade once its unrealized loss reaches this percent
+    # of the margin committed to it ("anything below 2% of the buy-in -> sell").
+    LOSS_CUT_PCT = _env_float("OANDA_LOSS_CUT_PCT", 2.0)
 
     # Safety -----------------------------------------------------------------
     # DRY_RUN: log intended orders, send nothing. Default False so the demo
@@ -684,6 +688,13 @@ def should_take_profit(unrealized_pl, margin_used, pct):
     return (unrealized_pl / margin_used) * 100.0 >= pct
 
 
+def should_cut_loss(unrealized_pl, margin_used, pct):
+    """True when a trade's unrealized loss reaches ``pct`` percent of its margin."""
+    if margin_used <= 0:
+        return False
+    return (unrealized_pl / margin_used) * 100.0 <= -pct
+
+
 def fallback_direction(candles):
     """Trend-following direction (BUY/SELL) used to top up to the minimum trade
     count when strategy signals are scarce: long if the fast EMA is at/above the
@@ -788,8 +799,8 @@ class OandaBot:
         logger.info(f"Strategy: {Config.STRATEGY}")
         logger.info(f"Risk per trade: ${Config.RISK_PER_TRADE}")
         logger.info(f"Stop Loss: {Config.STOP_LOSS_PIPS} pips | Take Profit: {Config.TAKE_PROFIT_PIPS} pips")
-        logger.info(f"Profit-take: +{Config.PROFIT_TAKE_PCT}% of margin | "
-                    f"Open trades: min {Config.MIN_OPEN_TRADES}, max {Config.MAX_OPEN_TRADES}")
+        logger.info(f"Profit-take: +{Config.PROFIT_TAKE_PCT}% | Loss-cut: -{Config.LOSS_CUT_PCT}% "
+                    f"(of margin) | Open trades: min {Config.MIN_OPEN_TRADES}, max {Config.MAX_OPEN_TRADES}")
         logger.info(f"Monitoring {len(Config.INSTRUMENTS)} pairs")
         logger.info(f"Kill switch: create '{Config.KILL_SWITCH_FILE}' to stop")
         logger.info("=" * 60)
@@ -877,15 +888,19 @@ class OandaBot:
             return True
         return False
 
-    # -- profit-take rule: close a trade at +PROFIT_TAKE_PCT% of its margin -
+    # -- manage exits: +PROFIT_TAKE_PCT% take-profit / -LOSS_CUT_PCT% stop ---
     def manage_open_trades(self):
         for t in self.client.get_open_trades():
             upl = float(t.get("unrealizedPL", 0) or 0)
             margin = float(t.get("marginUsed", 0) or 0)
+            pct = (upl / margin * 100) if margin else 0
             if should_take_profit(upl, margin, Config.PROFIT_TAKE_PCT):
-                pct = (upl / margin * 100) if margin else 0
                 logger.info(f"💰 PROFIT-TAKE {t.get('instrument')} #{t.get('id')}: "
                             f"+{pct:.1f}% of margin (>= {Config.PROFIT_TAKE_PCT}%), closing")
+                self.client.close_trade(t.get("id"))
+            elif should_cut_loss(upl, margin, Config.LOSS_CUT_PCT):
+                logger.info(f"🛑 LOSS-CUT {t.get('instrument')} #{t.get('id')}: "
+                            f"{pct:.1f}% of margin (<= -{Config.LOSS_CUT_PCT}%), closing")
                 self.client.close_trade(t.get("id"))
 
     # -- keep at least MIN_OPEN_TRADES open (trend-following fallback) ------

@@ -24,8 +24,13 @@ class FakeOanda:
         ]}
 
     def get_candles(self, inst, granularity="M5", count=60):
-        return [{"mid": {"c": f"{1.10 + i*0.0001:.5f}"}, "time": str(i),
-                 "complete": True} for i in range(25)]
+        out = []
+        for i in range(25):
+            c = 1.10 + i * 0.0001
+            out.append({"mid": {"o": f"{c:.5f}", "h": f"{c + 0.0005:.5f}",
+                                 "l": f"{c - 0.0005:.5f}", "c": f"{c:.5f}"},
+                        "time": str(i), "complete": True})
+        return out
 
 
 class FakeKalshi:
