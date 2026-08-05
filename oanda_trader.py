@@ -117,8 +117,10 @@ class Config:
     # percent of the margin committed to that trade ("10% back -> sell").
     PROFIT_TAKE_PCT = _env_float("OANDA_PROFIT_TAKE_PCT", 10.0)
     # Loss-cut rule: close a trade once its unrealized loss reaches this percent
-    # of the margin committed to it ("anything below 2% of the buy-in -> sell").
-    LOSS_CUT_PCT = _env_float("OANDA_LOSS_CUT_PCT", 2.0)
+    # of the margin committed to it. Note: the 20-pip hard stop is ~3-9% of
+    # margin depending on the pair, so at 12% this acts as a distant backstop
+    # (the hard stop usually fires first) rather than the primary exit.
+    LOSS_CUT_PCT = _env_float("OANDA_LOSS_CUT_PCT", 12.0)
 
     # Safety -----------------------------------------------------------------
     # DRY_RUN: log intended orders, send nothing. Default False so the demo
