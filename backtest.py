@@ -25,6 +25,13 @@ import oanda_trader as ot
 from oanda_trader import Config, OandaClient, STRATEGIES, completed_candles, pip_size
 
 
+def _minutes_per_bar(granularity):
+    """Approximate minutes per candle for an OANDA granularity code."""
+    unit = {"S": 1 / 60, "M": 1, "H": 60, "D": 1440, "W": 10080}[granularity[0]]
+    num = granularity[1:]
+    return unit * (int(num) if num else 1)
+
+
 def simulate(candles, signal_fn, sl_pips, tp_pips, pip_sz, warmup=25):
     """Replay candles through a signal function; return a list of closed trades.
 
@@ -140,7 +147,7 @@ def main():
             all_trades, Config.RISK_PER_TRADE, Config.STOP_LOSS_PIPS, Config.TAKE_PROFIT_PIPS
         )
 
-    span_days = count * 5 / 60 / 24  # M5 bars -> days
+    span_days = count * _minutes_per_bar(Config.TIMEFRAME) / 60 / 24
     print("=" * 74)
     print(f" BACKTEST · {len(Config.INSTRUMENTS)} pairs · ~{span_days:.1f} days "
           f"· SL {Config.STOP_LOSS_PIPS}/TP {Config.TAKE_PROFIT_PIPS} pips "
