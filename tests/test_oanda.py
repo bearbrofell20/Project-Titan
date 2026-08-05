@@ -216,7 +216,7 @@ def test_bollinger_none_when_flat():
 
 
 def test_all_strategies_registered():
-    assert set(ot.STRATEGIES) == {"rsi", "ema_pullback", "breakout", "bollinger"}
+    assert set(ot.STRATEGIES) == {"rsi", "ema_pullback", "breakout", "bollinger", "stochastic"}
 
 
 # --- profit-take rule (+X% of margin) --------------------------------------
@@ -252,3 +252,40 @@ def test_validate_blocks_min_greater_than_max():
         assert any("MIN_OPEN_TRADES" in p for p in problems)
     finally:
         Config.MIN_OPEN_TRADES, Config.MAX_OPEN_TRADES = orig_min, orig_max
+
+
+# --- stochastic reversal strategy ------------------------------------------
+def _sc(close):
+    # Fixed 0..100 range so %K == close, making the oscillator deterministic.
+    return {"mid": {"h": "100", "l": "0", "c": str(close)}, "time": "0", "complete": True}
+
+
+def test_stochastic_k_equals_close_in_fixed_range():
+    ks = ot.stochastic_k([_sc(30)] * 14, period=14)
+    assert ks[-1] == 30.0
+    assert ks[0] is None  # not enough history yet
+
+
+def test_stochastic_buys_on_oversold_turn_up():
+    # Long stretch oversold (~10), then %K ticks up and crosses %D.
+    candles = [_sc(10)] * 19 + [_sc(15)]
+    assert ot.StochasticReversalDetector.get_signal(candles, "EUR_USD") == "BUY"
+
+
+def test_stochastic_sells_on_overbought_turn_down():
+    candles = [_sc(90)] * 19 + [_sc(85)]
+    assert ot.StochasticReversalDetector.get_signal(candles, "EUR_USD") == "SELL"
+
+
+def test_stochastic_none_in_midrange():
+    candles = [_sc(50)] * 20
+    assert ot.StochasticReversalDetector.get_signal(candles, "EUR_USD") is None
+
+
+def test_stochastic_none_without_enough_history():
+    assert ot.StochasticReversalDetector.get_signal([_sc(10)] * 5, "EUR_USD") is None
+
+
+def test_stochastic_registered():
+    assert "stochastic" in ot.STRATEGIES
+    assert set(ot.STRATEGIES) == {"rsi", "ema_pullback", "breakout", "bollinger", "stochastic"}

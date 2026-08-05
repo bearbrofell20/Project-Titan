@@ -190,6 +190,10 @@ Pick one with `OANDA_STRATEGY`:
   `OANDA_BREAKOUT_LOOKBACK`-bar high (default 20), sells a new low.
 * **`bollinger`** — mean reversion: buys below the lower Bollinger band and sells
   above the upper band. Tunable: `OANDA_BOLL_PERIOD` (20), `OANDA_BOLL_K` (2.0).
+* **`stochastic`** — mean reversion on the Stochastic oscillator: buys when %D is
+  oversold and %K turns back up through it, sells the overbought mirror. Waits
+  for the turn, not just the extreme. Tunable: `OANDA_STOCH_PERIOD` (14),
+  `OANDA_STOCH_SMOOTH` (3), `OANDA_STOCH_OVERSOLD` (20), `OANDA_STOCH_OVERBOUGHT` (80).
 
 ```bash
 OANDA_STRATEGY=ema_pullback python oanda_trader.py

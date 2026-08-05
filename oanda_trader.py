@@ -97,6 +97,12 @@ class Config:
     BOLL_PERIOD = _env_int("OANDA_BOLL_PERIOD", 20)
     BOLL_K = _env_float("OANDA_BOLL_K", 2.0)
 
+    # Stochastic reversal strategy -------------------------------------------
+    STOCH_PERIOD = _env_int("OANDA_STOCH_PERIOD", 14)     # %K lookback
+    STOCH_SMOOTH = _env_int("OANDA_STOCH_SMOOTH", 3)      # %D smoothing
+    STOCH_OVERSOLD = _env_float("OANDA_STOCH_OVERSOLD", 20)
+    STOCH_OVERBOUGHT = _env_float("OANDA_STOCH_OVERBOUGHT", 80)
+
     # Risk Management --------------------------------------------------------
     STOP_LOSS_PIPS = _env_int("OANDA_STOP_LOSS_PIPS", 20)
     TAKE_PROFIT_PIPS = _env_int("OANDA_TAKE_PROFIT_PIPS", 40)
@@ -590,12 +596,78 @@ class BollingerReversionDetector:
         return None
 
 
+# ============================================================================
+# STOCHASTIC REVERSAL DETECTOR
+# ============================================================================
+
+
+def stochastic_k(candles, period):
+    """%K series (0-100) aligned to candles; None until `period` bars exist.
+
+    %K = 100 * (close - lowest_low) / (highest_high - lowest_low) over `period`.
+    """
+    highs = [float(c["mid"]["h"]) for c in candles]
+    lows = [float(c["mid"]["l"]) for c in candles]
+    closes = [float(c["mid"]["c"]) for c in candles]
+    ks = []
+    for i in range(len(candles)):
+        if i < period - 1:
+            ks.append(None)
+            continue
+        hh = max(highs[i - period + 1: i + 1])
+        ll = min(lows[i - period + 1: i + 1])
+        ks.append(50.0 if hh == ll else 100.0 * (closes[i] - ll) / (hh - ll))
+    return ks
+
+
+class StochasticReversalDetector:
+    """Mean reversion on the Stochastic oscillator.
+
+    %D is the moving average of %K. We fade extremes, but only on the *turn*:
+    * BUY  — %D is in the oversold zone and %K crosses back **up** through %D.
+    * SELL — %D is in the overbought zone and %K crosses back **down** through %D.
+
+    Waiting for the crossover (not just an oversold reading) avoids buying while
+    price is still falling.
+    """
+
+    name = "stochastic"
+
+    @staticmethod
+    def get_signal(candles, instrument):
+        period, smooth = Config.STOCH_PERIOD, Config.STOCH_SMOOTH
+        if len(candles) < period + smooth + 1:
+            return None
+        ks = stochastic_k(candles, period)
+
+        def d_at(i):
+            window = ks[i - smooth + 1: i + 1]
+            if any(v is None for v in window):
+                return None
+            return sum(window) / smooth
+
+        n = len(candles)
+        k_now, k_prev = ks[-1], ks[-2]
+        d_now, d_prev = d_at(n - 1), d_at(n - 2)
+        if None in (k_now, k_prev, d_now, d_prev):
+            return None
+
+        if d_now < Config.STOCH_OVERSOLD and k_prev <= d_prev and k_now > d_now:
+            logger.debug(f"  {instrument}: stochastic oversold turn-up (%D={d_now:.0f}) -> BUY")
+            return "BUY"
+        if d_now > Config.STOCH_OVERBOUGHT and k_prev >= d_prev and k_now < d_now:
+            logger.debug(f"  {instrument}: stochastic overbought turn-down (%D={d_now:.0f}) -> SELL")
+            return "SELL"
+        return None
+
+
 # Strategy dispatch -----------------------------------------------------------
 STRATEGIES = {
     "rsi": MomentumDetector,
     "ema_pullback": EmaPullbackDetector,
     "breakout": BreakoutDetector,
     "bollinger": BollingerReversionDetector,
+    "stochastic": StochasticReversalDetector,
 }
 
 
