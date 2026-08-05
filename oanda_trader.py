@@ -65,11 +65,17 @@ class Config:
     API_URL = os.getenv("OANDA_API_URL", "https://api-fxpractice.oanda.com")
     ACCOUNT_CURRENCY = "USD"  # sizing math assumes USD; verified at startup
 
-    INSTRUMENTS = [
+    # Override with OANDA_INSTRUMENTS="EUR_USD,USD_JPY,..." to restrict the set
+    # (e.g. to tight-spread majors only).
+    _DEFAULT_INSTRUMENTS = [
         "EUR_USD", "GBP_USD", "USD_JPY", "USD_CHF", "AUD_USD",
         "NZD_USD", "EUR_GBP", "EUR_JPY", "GBP_JPY", "USD_CAD",
         "USD_SEK", "USD_NOK", "USD_CNH",
     ]
+    INSTRUMENTS = (
+        [s.strip() for s in os.environ["OANDA_INSTRUMENTS"].split(",") if s.strip()]
+        if os.environ.get("OANDA_INSTRUMENTS") else _DEFAULT_INSTRUMENTS
+    )
 
     # Trading Parameters -----------------------------------------------------
     # Candle granularity: S5/S10/S30, M1/M5/M15, H1... (OANDA v20 codes).

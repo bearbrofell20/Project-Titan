@@ -25,6 +25,20 @@ import oanda_trader as ot
 from oanda_trader import Config, OandaClient, STRATEGIES, completed_candles, pip_size
 
 
+# Typical OANDA practice spreads, in pips, subtracted from every round-trip.
+# Majors are tight; crosses wider; SEK/NOK/CNH are genuinely expensive.
+SPREAD_PIPS = {
+    "EUR_USD": 1.2, "GBP_USD": 1.5, "USD_JPY": 1.2, "USD_CHF": 1.8,
+    "AUD_USD": 1.4, "NZD_USD": 1.8, "EUR_GBP": 1.6, "EUR_JPY": 1.8,
+    "GBP_JPY": 2.6, "USD_CAD": 1.8, "USD_SEK": 15.0, "USD_NOK": 18.0,
+    "USD_CNH": 8.0,
+}
+
+
+def spread_for(instrument):
+    return SPREAD_PIPS.get(instrument, 2.0)
+
+
 def _minutes_per_bar(granularity):
     """Approximate minutes per candle for an OANDA granularity code."""
     unit = {"S": 1 / 60, "M": 1, "H": 60, "D": 1440, "W": 10080}[granularity[0]]
@@ -32,11 +46,13 @@ def _minutes_per_bar(granularity):
     return unit * (int(num) if num else 1)
 
 
-def simulate(candles, signal_fn, sl_pips, tp_pips, pip_sz, warmup=25):
+def simulate(candles, signal_fn, sl_pips, tp_pips, pip_sz, warmup=25, spread_pips=0.0):
     """Replay candles through a signal function; return a list of closed trades.
 
     Only one position at a time per series: after an entry we jump forward to the
-    bar where it closed before looking for the next signal.
+    bar where it closed before looking for the next signal. ``spread_pips`` is the
+    round-trip cost subtracted from every trade's result (0 = the old, optimistic
+    no-cost view).
     """
     trades = []
     n = len(candles)
@@ -76,7 +92,8 @@ def simulate(candles, signal_fn, sl_pips, tp_pips, pip_sz, warmup=25):
 
         if outcome is None:
             break  # trade still open at the end of data — stop here
-        trades.append({"dir": sig, "entry": entry, "pips": outcome, "exit": j})
+        net = outcome - spread_pips  # pay the spread on every round trip
+        trades.append({"dir": sig, "entry": entry, "pips": net, "exit": j})
         i = j + 1
     return trades
 
@@ -97,9 +114,9 @@ def summarize(trades, risk_usd, sl_pips, tp_pips):
         peak = max(peak, eq)
         mdd = min(mdd, eq - peak)
 
-    # Dollar estimate under fixed-risk sizing: a loss = -risk, a win = risk*(TP/SL).
-    win_r = tp_pips / sl_pips
-    est_usd = len(wins) * risk_usd * win_r - len(losses) * risk_usd
+    # Dollar estimate under fixed-risk sizing: $/pip = risk_usd / sl_pips, so the
+    # net dollar result is the net pips scaled by that (spread already included).
+    est_usd = net_pips * (risk_usd / sl_pips) if sl_pips else 0.0
     return {
         "trades": len(trades), "wins": len(wins), "losses": len(losses),
         "win_rate": win_rate, "net_pips": net_pips, "profit_factor": pf,
@@ -141,6 +158,7 @@ def main():
                 candles,
                 lambda w, _i=inst: detector.get_signal(w, _i),
                 Config.STOP_LOSS_PIPS, Config.TAKE_PROFIT_PIPS, pip_size(inst),
+                spread_pips=spread_for(inst),
             )
             all_trades.extend(trades)
         results[name] = summarize(
@@ -149,8 +167,8 @@ def main():
 
     span_days = count * _minutes_per_bar(Config.TIMEFRAME) / 60 / 24
     print("=" * 74)
-    print(f" BACKTEST · {len(Config.INSTRUMENTS)} pairs · ~{span_days:.1f} days "
-          f"· SL {Config.STOP_LOSS_PIPS}/TP {Config.TAKE_PROFIT_PIPS} pips "
+    print(f" BACKTEST (NET OF SPREAD) · {len(Config.INSTRUMENTS)} pairs · {Config.TIMEFRAME} "
+          f"· ~{span_days:.1f} days · SL {Config.STOP_LOSS_PIPS}/TP {Config.TAKE_PROFIT_PIPS} pips "
           f"· ${Config.RISK_PER_TRADE}/trade")
     print("=" * 74)
     print(f" {'strategy':<14}{'trades':>7}{'win%':>7}{'net pips':>10}"
@@ -161,8 +179,8 @@ def main():
         print(f" {name:<14}{s['trades']:>7}{s['win_rate']:>6.1f}%{s['net_pips']:>10.0f}"
               f"{_pf(s['profit_factor']):>7}{s['max_dd_pips']:>9.0f}{s['est_usd']:>10,.0f}")
     print("=" * 74)
-    print(" Pip-based, no spread/slippage/financing — a relative ranking, not a")
-    print(" profit promise. Confirm the winner on the live demo before real money.")
+    print(" Net of typical spread (still ignores slippage/financing). A positive")
+    print(" 'est $' here is the bar to clear — confirm on the live demo before real money.")
 
 
 if __name__ == "__main__":
