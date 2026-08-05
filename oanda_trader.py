@@ -97,6 +97,13 @@ class Config:
     EMA_FAST = _env_int("OANDA_EMA_FAST", 9)
     EMA_SLOW = _env_int("OANDA_EMA_SLOW", 21)
 
+    # EMA trend filter / crossover (20 vs 50) --------------------------------
+    TREND_FAST = _env_int("OANDA_TREND_FAST", 20)
+    TREND_SLOW = _env_int("OANDA_TREND_SLOW", 50)
+    # When true, gate the active strategy's entries to the 20/50 EMA direction:
+    # only longs when 20>50, only shorts when 20<50.
+    TREND_FILTER = _env_bool("OANDA_TREND_FILTER", False)
+
     # Breakout strategy ------------------------------------------------------
     BREAKOUT_LOOKBACK = _env_int("OANDA_BREAKOUT_LOOKBACK", 20)
 
@@ -166,6 +173,8 @@ def validate_config(api_token: str):
         )
     if Config.EMA_FAST >= Config.EMA_SLOW:
         problems.append("OANDA_EMA_FAST must be < OANDA_EMA_SLOW")
+    if Config.TREND_FAST >= Config.TREND_SLOW:
+        problems.append("OANDA_TREND_FAST must be < OANDA_TREND_SLOW")
     valid_granularities = {
         "S5", "S10", "S15", "S30", "M1", "M2", "M4", "M5", "M10", "M15",
         "M30", "H1", "H2", "H3", "H4", "H6", "H8", "H12", "D", "W", "M",
@@ -673,6 +682,49 @@ class StochasticReversalDetector:
         return None
 
 
+# ============================================================================
+# EMA TREND FILTER / CROSSOVER  (20 vs 50)
+# ============================================================================
+
+
+def ema_trend_bias(candles, fast, slow):
+    """Directional bias from a fast/slow EMA: 'BUY' if fast>slow, 'SELL' if <, else None."""
+    if len(candles) < slow + 1:
+        return None
+    closes = [float(c["mid"]["c"]) for c in candles]
+    f = ema_series(closes, fast)[-1]
+    s = ema_series(closes, slow)[-1]
+    if f > s:
+        return "BUY"
+    if f < s:
+        return "SELL"
+    return None
+
+
+class EmaTrendDetector:
+    """Dual-EMA (20/50) trend crossover: buy when the fast EMA crosses above the
+    slow EMA, sell when it crosses below. Trades only on the flip (one entry per
+    regime change), then rides the trade to its stop/target."""
+
+    name = "ema_trend"
+
+    @staticmethod
+    def get_signal(candles, instrument):
+        fast, slow = Config.TREND_FAST, Config.TREND_SLOW
+        if len(candles) < slow + 2:
+            return None
+        closes = [float(c["mid"]["c"]) for c in candles]
+        ef, es = ema_series(closes, fast), ema_series(closes, slow)
+        now, prev = ef[-1] - es[-1], ef[-2] - es[-2]
+        if prev <= 0 and now > 0:
+            logger.debug(f"  {instrument}: EMA{fast} crossed above EMA{slow} -> BUY")
+            return "BUY"
+        if prev >= 0 and now < 0:
+            logger.debug(f"  {instrument}: EMA{fast} crossed below EMA{slow} -> SELL")
+            return "SELL"
+        return None
+
+
 # Strategy dispatch -----------------------------------------------------------
 STRATEGIES = {
     "rsi": MomentumDetector,
@@ -680,13 +732,23 @@ STRATEGIES = {
     "breakout": BreakoutDetector,
     "bollinger": BollingerReversionDetector,
     "stochastic": StochasticReversalDetector,
+    "ema_trend": EmaTrendDetector,
 }
 
 
 def signal_for(candles, instrument):
-    """Return the entry signal from the currently-selected strategy."""
+    """Entry signal from the active strategy, optionally gated by the trend filter.
+
+    With TREND_FILTER on, a signal is only allowed if it matches the 20/50 EMA
+    bias ("only buy when 20>50, only sell when 20<50").
+    """
     detector = STRATEGIES.get(Config.STRATEGY, MomentumDetector)
-    return detector.get_signal(candles, instrument)
+    sig = detector.get_signal(candles, instrument)
+    if sig and Config.TREND_FILTER:
+        bias = ema_trend_bias(candles, Config.TREND_FAST, Config.TREND_SLOW)
+        if bias and sig != bias:
+            return None  # entry is against the trend — block it
+    return sig
 
 
 def should_take_profit(unrealized_pl, margin_used, pct):

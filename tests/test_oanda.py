@@ -216,7 +216,40 @@ def test_bollinger_none_when_flat():
 
 
 def test_all_strategies_registered():
-    assert set(ot.STRATEGIES) == {"rsi", "ema_pullback", "breakout", "bollinger", "stochastic"}
+    assert set(ot.STRATEGIES) == {"rsi", "ema_pullback", "breakout", "bollinger",
+                                  "stochastic", "ema_trend"}
+
+
+# --- EMA 20/50 trend filter + crossover ------------------------------------
+def test_ema_trend_bias_up_and_down():
+    up = [_c(1.10 + i * 0.001) for i in range(60)]
+    down = [_c(1.20 - i * 0.001) for i in range(60)]
+    assert ot.ema_trend_bias(up, 20, 50) == "BUY"
+    assert ot.ema_trend_bias(down, 20, 50) == "SELL"
+
+
+def test_ema_trend_crossover_buy():
+    # Downtrend (fast below slow), then a strong rally flips fast above slow.
+    prices = [1.20 - i * 0.001 for i in range(55)] + [1.20 + i * 0.01 for i in range(1, 12)]
+    candles = [_c(p) for p in prices]
+    seen = [ot.EmaTrendDetector.get_signal(candles[: i + 1], "EUR_USD")
+            for i in range(52, len(candles))]
+    assert "BUY" in seen
+
+
+def test_trend_filter_blocks_against_trend_signal():
+    # Clean uptrend -> bias BUY. A SELL signal from the active strategy is blocked.
+    up = [_c(1.10 + i * 0.001) for i in range(60)]
+    orig_filter, orig_strat = Config.TREND_FILTER, Config.STRATEGY
+    try:
+        Config.TREND_FILTER = True
+        Config.STRATEGY = "breakout"
+        # Force a new 20-bar low on the last bar -> breakout SELL, against the uptrend.
+        against = up[:-1] + [_c(1.05)]
+        assert ot.BreakoutDetector.get_signal(against, "EUR_USD") == "SELL"
+        assert ot.signal_for(against, "EUR_USD") is None  # blocked by filter
+    finally:
+        Config.TREND_FILTER, Config.STRATEGY = orig_filter, orig_strat
 
 
 # --- profit-take rule (+X% of margin) --------------------------------------
@@ -288,7 +321,8 @@ def test_stochastic_none_without_enough_history():
 
 def test_stochastic_registered():
     assert "stochastic" in ot.STRATEGIES
-    assert set(ot.STRATEGIES) == {"rsi", "ema_pullback", "breakout", "bollinger", "stochastic"}
+    assert set(ot.STRATEGIES) == {"rsi", "ema_pullback", "breakout", "bollinger",
+                                  "stochastic", "ema_trend"}
 
 
 # --- loss-cut rule (-X% of margin) -----------------------------------------
