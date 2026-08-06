@@ -45,6 +45,7 @@ class Market:
     no_ask: Optional[int]
     last_price: Optional[int]       # last traded Yes price, in cents
     volume: int = 0
+    strike: Optional[float] = None  # numeric strike (e.g. BTC "price to beat")
 
     @property
     def is_tradable(self) -> bool:
@@ -59,17 +60,37 @@ class Market:
 
     @classmethod
     def from_api(cls, data: dict) -> "Market":
-        """Build a :class:`Market` from a raw Kalshi ``/markets`` payload entry."""
+        """Build a :class:`Market` from a raw Kalshi ``/markets`` payload entry.
+
+        Supports both the legacy integer-cent fields (``yes_bid``) and the
+        current dollar-string schema (``yes_bid_dollars``: "0.4500"), which the
+        fast crypto markets use. Dollar prices are converted to cents.
+        """
+        def cents(field):
+            # legacy integer cents first
+            v = data.get(field)
+            if v is not None:
+                return int(v)
+            # current schema: "<field>_dollars" as a dollar string
+            d = data.get(f"{field}_dollars")
+            if d in (None, ""):
+                return None
+            return round(float(d) * 100)
+
+        strike = data.get("floor_strike")
+        if strike is None:
+            strike = data.get("cap_strike")
         return cls(
             ticker=data["ticker"],
             title=data.get("title", data["ticker"]),
             status=data.get("status", "unknown"),
-            yes_bid=data.get("yes_bid"),
-            yes_ask=data.get("yes_ask"),
-            no_bid=data.get("no_bid"),
-            no_ask=data.get("no_ask"),
-            last_price=data.get("last_price"),
-            volume=data.get("volume", 0) or 0,
+            yes_bid=cents("yes_bid"),
+            yes_ask=cents("yes_ask"),
+            no_bid=cents("no_bid"),
+            no_ask=cents("no_ask"),
+            last_price=cents("last_price"),
+            volume=int(data.get("volume", 0) or 0),
+            strike=float(strike) if strike is not None else None,
         )
 
 
