@@ -28,7 +28,8 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import oanda_trader as ot
-from oanda_trader import Config, MomentumDetector, OandaClient, completed_candles, signal_for
+from oanda_trader import (Config, MarketAnalyzer, MomentumDetector, OandaClient,
+                          adx, completed_candles, signal_for)
 
 PORT = int(os.getenv("DASHBOARD_PORT", "8080"))
 REFRESH = int(os.getenv("DASHBOARD_REFRESH", "8"))
@@ -81,14 +82,22 @@ def _oanda_market(client):
     for inst in Config.INSTRUMENTS:
         raw = client.get_candles(inst, granularity=Config.TIMEFRAME, count=Config.CANDLE_COUNT)
         candles = completed_candles(raw)
-        row = {"instrument": inst, "price": None, "rsi": None, "trend": None, "signal": None}
+        row = {"instrument": inst, "price": None, "rsi": None, "trend": None,
+               "signal": None, "adx": None, "vetoed": False}
         if len(candles) >= 20:
             closes = [_f(c["mid"]["c"]) for c in candles]
             row["price"] = closes[-1]
             rsi = MomentumDetector.calculate_rsi(closes, Config.RSI_PERIOD)
             row["rsi"] = round(rsi, 1) if rsi is not None else None
             row["trend"] = MomentumDetector.detect_trend(candles, Config.TREND_PERIOD)
-            row["signal"] = signal_for(candles, inst)
+            a = adx(candles, Config.ADX_PERIOD)
+            row["adx"] = round(a) if a is not None else None
+            sig = signal_for(candles, inst)
+            # Reflect what the bot would actually do: the analyzer can veto.
+            if sig and Config.ANALYZER and not MarketAnalyzer.approves(candles, inst):
+                row["vetoed"] = True
+                sig = None
+            row["signal"] = sig
         rows.append(row)
     return rows
 
@@ -284,12 +293,14 @@ function renderOanda(v){
     ['Realized P/L',pnl(a.realizedPL)],['Open trades',a.openTradeCount],['Margin used',money(a.marginUsed)]]
     .map(([k,val])=>`<div class="card"><div class="k">${k}</div><div class="v">${val}</div></div>`).join('');
   const pos=v.positions.length?v.positions.map(p=>`<tr><td>${p.instrument}</td><td>${p.units}</td><td>${p.avgPrice||'—'}</td><td>${pnl(p.unrealizedPL)}</td></tr>`).join(''):'<tr><td colspan="4" class="mut">No open positions</td></tr>';
-  const mk=v.market.map(r=>`<tr><td>${r.instrument}</td><td>${r.price??'—'}</td><td class="${rsiCls(r.rsi)}">${r.rsi??'—'}</td><td>${trend(r.trend)}</td><td>${sig(r.signal)}</td></tr>`).join('');
+  const adxCell=r=>r.adx==null?'<span class="mut">—</span>':`<span class="${r.adx>=25?'pos':'mut'}">${r.adx}</span>`;
+  const sigCell=r=>r.vetoed?'<span class="tag none" title="analyzer veto">⊘ veto</span>':sig(r.signal);
+  const mk=v.market.map(r=>`<tr><td>${r.instrument}</td><td>${r.price??'—'}</td><td class="${rsiCls(r.rsi)}">${r.rsi??'—'}</td><td>${adxCell(r)}</td><td>${trend(r.trend)}</td><td>${sigCell(r)}</td></tr>`).join('');
   const tr=v.trades.length?v.trades.map(t=>`<tr><td>${new Date(t.timestamp).toLocaleTimeString()}</td><td>${t.instrument}</td><td>${t.direction}</td><td>${t.units}</td><td>${(+t.entry_price).toFixed(5)}</td></tr>`).join(''):'<tr><td colspan="5" class="mut">No trades logged yet</td></tr>';
   return head+`<div class="cards" style="margin-bottom:8px">${cards}</div>`+
     `<div class="foot">${bot} &nbsp; Strategy: <b>${esc(v.strategy)}</b> · Risk $${m.risk}/trade · SL ${m.sl}/TP ${m.tp} pips · ${m.pairs} pairs · ${esc(v.env)}</div>`+
     `<h3>Open positions</h3><table><thead><tr><th>Instrument</th><th>Units</th><th>Avg price</th><th>Unrealized P/L</th></tr></thead><tbody>${pos}</tbody></table>`+
-    `<h3>Live signals</h3><table><thead><tr><th>Pair</th><th>Price</th><th>RSI</th><th>Trend</th><th>Signal</th></tr></thead><tbody>${mk}</tbody></table>`+
+    `<h3>Live signals</h3><table><thead><tr><th>Pair</th><th>Price</th><th>RSI</th><th>ADX</th><th>Trend</th><th>Signal</th></tr></thead><tbody>${mk}</tbody></table>`+
     `<h3>Recent trades</h3><table><thead><tr><th>Time</th><th>Instrument</th><th>Dir</th><th>Units</th><th>Entry</th></tr></thead><tbody>${tr}</tbody></table>`;
 }
 

@@ -394,3 +394,31 @@ def test_analyzer_vetoes_dead_market():
         assert v["approved"] is False and "dead market" in v["reason"]
     finally:
         Config.MIN_ADX, Config.MIN_ATR_PIPS = orig
+
+
+# --- config validation hardening (troubleshooting passes) ------------------
+def test_validate_catches_zero_poll_interval():
+    orig = Config.POLL_INTERVAL
+    try:
+        Config.POLL_INTERVAL = 0
+        assert any("POLL_INTERVAL" in p for p in ot.validate_config("tok"))
+    finally:
+        Config.POLL_INTERVAL = orig
+
+
+def test_validate_catches_empty_instruments():
+    orig = Config.INSTRUMENTS
+    try:
+        Config.INSTRUMENTS = []
+        assert any("INSTRUMENTS is empty" in p for p in ot.validate_config("tok"))
+    finally:
+        Config.INSTRUMENTS = orig
+
+
+def test_validate_catches_insufficient_candle_count():
+    orig = (Config.CANDLE_COUNT, Config.STRATEGY)
+    try:
+        Config.STRATEGY, Config.CANDLE_COUNT = "ema_trend", 10  # needs TREND_SLOW+2 = 52
+        assert any("CANDLE_COUNT" in p for p in ot.validate_config("tok"))
+    finally:
+        Config.CANDLE_COUNT, Config.STRATEGY = orig

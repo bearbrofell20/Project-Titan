@@ -173,6 +173,28 @@ def validate_config(api_token: str):
         problems.append("RISK_PER_TRADE must be positive")
     if Config.STOP_LOSS_PIPS <= 0:
         problems.append("STOP_LOSS_PIPS must be positive")
+    if Config.TAKE_PROFIT_PIPS <= 0:
+        problems.append("TAKE_PROFIT_PIPS must be positive")
+    if Config.POLL_INTERVAL < 1:
+        problems.append("OANDA_POLL_INTERVAL must be >= 1 second (avoids hammering the API)")
+    if not Config.INSTRUMENTS:
+        problems.append("OANDA_INSTRUMENTS is empty — there are no pairs to trade")
+    # The active strategy (and analyzer) need enough candle history to signal.
+    strat_need = {
+        "rsi": max(20, Config.RSI_PERIOD + 1),
+        "ema_pullback": Config.EMA_SLOW + 2,
+        "breakout": Config.BREAKOUT_LOOKBACK + 1,
+        "bollinger": Config.BOLL_PERIOD,
+        "stochastic": Config.STOCH_PERIOD + Config.STOCH_SMOOTH + 1,
+        "ema_trend": Config.TREND_SLOW + 2,
+    }.get(Config.STRATEGY, 20)
+    if Config.ANALYZER:
+        strat_need = max(strat_need, 2 * Config.ADX_PERIOD + 1, Config.ATR_PERIOD + 1)
+    if Config.CANDLE_COUNT < strat_need:
+        problems.append(
+            f"OANDA_CANDLE_COUNT ({Config.CANDLE_COUNT}) is too small for "
+            f"{Config.STRATEGY}{'+analyzer' if Config.ANALYZER else ''}; need >= {strat_need}"
+        )
     if Config.STRATEGY not in STRATEGIES:
         problems.append(
             f"OANDA_STRATEGY={Config.STRATEGY!r} is unknown; "
@@ -285,11 +307,12 @@ class OandaClient:
             "Content-Type": "application/json",
         }
 
-    def _request(self, method, path, *, params=None, body=None, retry=True):
+    def _request(self, method, path, *, params=None, body=None, retry=True, quiet=False):
         """Perform a request. Returns parsed JSON dict (or None on failure).
 
         GETs retry on transient network errors; POSTs never retry so a dropped
-        response can't produce a duplicate order. HTTP error bodies are logged.
+        response can't produce a duplicate order. HTTP error bodies are logged
+        unless ``quiet`` (used for expected-miss probes like currency lookups).
         """
         url = f"{Config.API_URL}{path}"
         attempts = 3 if retry else 1
@@ -303,7 +326,7 @@ class OandaClient:
                     data = resp.json() if resp.content else {}
                 except ValueError:
                     data = {}
-                if resp.status_code >= 400:
+                if resp.status_code >= 400 and not quiet:
                     logger.error(
                         f"{method} {path} -> {resp.status_code}: {resp.text[:400]}"
                     )
@@ -315,18 +338,19 @@ class OandaClient:
                 logger.error(f"{method} {path} failed after {attempts} attempt(s): {e}")
                 return None
 
-    def get_candles(self, instrument, granularity="M5", count=100):
+    def get_candles(self, instrument, granularity="M5", count=100, quiet=False):
         """Fetch recent candles for an instrument (oldest -> newest)."""
         data = self._request(
             "GET",
             f"/v3/instruments/{instrument}/candles",
             params={"granularity": granularity, "count": count, "price": "M"},
+            quiet=quiet,
         )
         return (data or {}).get("candles", [])
 
-    def get_price(self, instrument):
+    def get_price(self, instrument, quiet=False):
         """Latest mid close price for an instrument, or None."""
-        candles = self.get_candles(instrument, count=1)
+        candles = self.get_candles(instrument, count=1, quiet=quiet)
         if not candles:
             return None
         try:
@@ -949,6 +973,7 @@ class OandaBot:
         self.trade_logger = TradeLogger(Config.STATS_FILE)
         self.last_candle_time = defaultdict(int)
         self.running = True
+        self.stats_errors = 0  # cycles that hit (and survived) an error
         self._rate_cache = {}  # quote currency -> USD rate, refreshed each cycle
 
         mode = "DRY-RUN" if Config.DRY_RUN else ("LIVE" if Config.is_live_endpoint() else "DEMO")
@@ -1011,12 +1036,14 @@ class OandaBot:
         if quote in self._rate_cache:
             return self._rate_cache[quote]
 
+        # Probe both forms quietly — one of them is expected not to exist, and a
+        # 404 there is normal, not an error worth logging every cycle.
         rate = None
-        direct = self.client.get_price(f"{quote}_USD")   # e.g. GBP_USD
+        direct = self.client.get_price(f"{quote}_USD", quiet=True)   # e.g. GBP_USD
         if direct:
             rate = direct
         else:
-            inverse = self.client.get_price(f"USD_{quote}")  # e.g. USD_JPY
+            inverse = self.client.get_price(f"USD_{quote}", quiet=True)  # e.g. USD_JPY
             if inverse:
                 rate = 1.0 / inverse
 
@@ -1130,24 +1157,30 @@ class OandaBot:
             if self.check_kill_switch():
                 break
 
-            self._rate_cache.clear()  # refresh conversion rates each cycle
+            # A transient error in any step must never kill a 24/7 run: log it
+            # and continue to the next cycle.
+            try:
+                self._rate_cache.clear()  # refresh conversion rates each cycle
 
-            self.manage_open_trades()  # 1) take profits at +PROFIT_TAKE_PCT% of margin
-            open_instruments = self.client.get_open_instruments()
+                self.manage_open_trades()  # 1) take-profit / loss-cut on open trades
+                open_instruments = self.client.get_open_instruments()
 
-            logger.info(f"\n[Cycle {cycle}] Scanning {len(Config.INSTRUMENTS)} pairs "
-                        f"({len(open_instruments)} open)...")
-            for instrument in Config.INSTRUMENTS:  # 2) strategy entries
-                if self.check_kill_switch():
-                    break
-                self.scan_pair(instrument, open_instruments)
+                logger.info(f"\n[Cycle {cycle}] Scanning {len(Config.INSTRUMENTS)} pairs "
+                            f"({len(open_instruments)} open)...")
+                for instrument in Config.INSTRUMENTS:  # 2) strategy entries
+                    if self.check_kill_switch():
+                        break
+                    self.scan_pair(instrument, open_instruments)
 
-            if not self.check_kill_switch():       # 3) top up to the minimum
-                self.ensure_minimum_trades(open_instruments)
+                if not self.check_kill_switch():       # 3) top up to the minimum
+                    self.ensure_minimum_trades(open_instruments)
 
-            account = self.client.get_account_details()
-            if account:
-                logger.info(f"Account balance: ${float(account.get('balance', 0)):.2f}")
+                account = self.client.get_account_details()
+                if account:
+                    logger.info(f"Account balance: ${float(account.get('balance', 0)):.2f}")
+            except Exception as e:
+                self.stats_errors += 1
+                logger.error(f"Cycle {cycle} error (continuing): {e}")
 
             logger.info(f"Waiting {Config.POLL_INTERVAL}s until next scan...")
             for _ in range(Config.POLL_INTERVAL):
@@ -1156,7 +1189,7 @@ class OandaBot:
                 time.sleep(1)
 
         logger.info("🛑 Bot shutdown complete")
-        logger.info(self.trade_logger.summary())
+        logger.info(f"{self.trade_logger.summary()} | cycle errors survived: {self.stats_errors}")
 
 
 # ============================================================================
