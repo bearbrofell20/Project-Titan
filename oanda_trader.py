@@ -97,6 +97,13 @@ class Config:
     EMA_FAST = _env_int("OANDA_EMA_FAST", 9)
     EMA_SLOW = _env_int("OANDA_EMA_SLOW", 21)
 
+    # Market analyzer — vets each trade before it fires --------------------
+    ANALYZER = _env_bool("OANDA_ANALYZER", False)
+    ADX_PERIOD = _env_int("OANDA_ADX_PERIOD", 14)
+    MIN_ADX = _env_float("OANDA_MIN_ADX", 20.0)     # require trend strength >= this
+    ATR_PERIOD = _env_int("OANDA_ATR_PERIOD", 14)
+    MIN_ATR_PIPS = _env_float("OANDA_MIN_ATR_PIPS", 3.0)  # skip dead markets
+
     # EMA trend filter / crossover (20 vs 50) --------------------------------
     TREND_FAST = _env_int("OANDA_TREND_FAST", 20)
     TREND_SLOW = _env_int("OANDA_TREND_SLOW", 50)
@@ -687,6 +694,90 @@ class StochasticReversalDetector:
 # ============================================================================
 
 
+# ============================================================================
+# MARKET ANALYZER  (a second "bot" that vets trades before they fire)
+# ============================================================================
+
+
+def atr(candles, period=14):
+    """Average True Range (in price) over `period` bars, or None."""
+    if len(candles) < period + 1:
+        return None
+    trs = []
+    for i in range(1, len(candles)):
+        h = float(candles[i]["mid"]["h"])
+        low = float(candles[i]["mid"]["l"])
+        pc = float(candles[i - 1]["mid"]["c"])
+        trs.append(max(h - low, abs(h - pc), abs(low - pc)))
+    return sum(trs[-period:]) / period
+
+
+def _wilder(values, period):
+    """Wilder's running smoothing of a series (used by ADX)."""
+    if len(values) < period:
+        return []
+    out = [sum(values[:period])]
+    for v in values[period:]:
+        out.append(out[-1] - out[-1] / period + v)
+    return out
+
+
+def adx(candles, period=14):
+    """Approximate ADX (trend strength, 0-100) over `period` bars, or None.
+
+    High ADX (>25) = strong trend; low (<20) = choppy/ranging. Direction-agnostic.
+    """
+    n = len(candles)
+    if n < 2 * period + 1:
+        return None
+    plus_dm, minus_dm, tr = [], [], []
+    for i in range(1, n):
+        h = float(candles[i]["mid"]["h"]); low = float(candles[i]["mid"]["l"])
+        ph = float(candles[i - 1]["mid"]["h"]); pl = float(candles[i - 1]["mid"]["l"])
+        pc = float(candles[i - 1]["mid"]["c"])
+        up, down = h - ph, pl - low
+        plus_dm.append(up if (up > down and up > 0) else 0.0)
+        minus_dm.append(down if (down > up and down > 0) else 0.0)
+        tr.append(max(h - low, abs(h - pc), abs(low - pc)))
+
+    str_, sp, sm = _wilder(tr, period), _wilder(plus_dm, period), _wilder(minus_dm, period)
+    if not str_:
+        return None
+    dx = []
+    for st, p, m in zip(str_, sp, sm):
+        if st == 0:
+            dx.append(0.0); continue
+        pdi, mdi = 100 * p / st, 100 * m / st
+        denom = pdi + mdi
+        dx.append(100 * abs(pdi - mdi) / denom if denom else 0.0)
+    if not dx:
+        return None
+    window = dx[-period:] if len(dx) >= period else dx
+    return sum(window) / len(window)
+
+
+class MarketAnalyzer:
+    """Pre-trade market analysis: approve or veto a signal based on conditions."""
+
+    @staticmethod
+    def analyze(candles, instrument):
+        a = adx(candles, Config.ADX_PERIOD)
+        atr_val = atr(candles, Config.ATR_PERIOD)
+        atr_pips = (atr_val / pip_size(instrument)) if atr_val is not None else None
+
+        reasons = []
+        if a is not None and a < Config.MIN_ADX:
+            reasons.append(f"ADX {a:.0f} < {Config.MIN_ADX:.0f} (no trend / choppy)")
+        if atr_pips is not None and atr_pips < Config.MIN_ATR_PIPS:
+            reasons.append(f"ATR {atr_pips:.1f}p < {Config.MIN_ATR_PIPS:.0f}p (dead market)")
+        return {"approved": not reasons, "adx": a, "atr_pips": atr_pips,
+                "reason": "; ".join(reasons) or "conditions ok"}
+
+    @staticmethod
+    def approves(candles, instrument):
+        return MarketAnalyzer.analyze(candles, instrument)["approved"]
+
+
 def ema_trend_bias(candles, fast, slow):
     """Directional bias from a fast/slow EMA: 'BUY' if fast>slow, 'SELL' if <, else None."""
     if len(candles) < slow + 1:
@@ -867,6 +958,8 @@ class OandaBot:
         logger.info(f"Account: {Config.ACCOUNT_ID}")
         logger.info(f"Mode: {mode}")
         logger.info(f"Strategy: {Config.STRATEGY}")
+        if Config.ANALYZER:
+            logger.info(f"Analyzer: ON (min ADX {Config.MIN_ADX:.0f}, min ATR {Config.MIN_ATR_PIPS:.0f} pips)")
         logger.info(f"Risk per trade: ${Config.RISK_PER_TRADE}")
         logger.info(f"Stop Loss: {Config.STOP_LOSS_PIPS} pips | Take Profit: {Config.TAKE_PROFIT_PIPS} pips")
         logger.info(f"Profit-take: +{Config.PROFIT_TAKE_PCT}% | Loss-cut: -{Config.LOSS_CUT_PCT}% "
@@ -1006,6 +1099,13 @@ class OandaBot:
             signal = signal_for(candles, instrument)
             if not signal:
                 return
+
+            # Analyzer bot: vet the trade against real market conditions.
+            if Config.ANALYZER:
+                verdict = MarketAnalyzer.analyze(candles, instrument)
+                if not verdict["approved"]:
+                    logger.info(f"🔎 ANALYZER VETO {signal} {instrument}: {verdict['reason']}")
+                    return
 
             if Config.ONE_POSITION_PER_INSTRUMENT and instrument in open_instruments:
                 logger.info(f"Skip {instrument}: position already open")

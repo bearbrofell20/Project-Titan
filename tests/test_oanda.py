@@ -339,3 +339,58 @@ def test_should_cut_loss_guards_bad_margin():
 
 def test_default_strategy_is_the_winner():
     assert Config.STRATEGY == "stochastic"
+
+
+# --- market analyzer (ATR / ADX pre-trade filter) --------------------------
+def _ohlc(o, h, l, c):
+    return {"mid": {"o": str(o), "h": str(h), "l": str(l), "c": str(c)},
+            "time": "0", "complete": True}
+
+
+def test_atr_basic():
+    # Each bar has a 10-pip range on EUR_USD-scale prices.
+    candles = [_ohlc(1.1000, 1.1010, 1.1000, 1.1005) for _ in range(20)]
+    a = ot.atr(candles, 14)
+    assert a is not None and abs(a - 0.0010) < 1e-6
+
+
+def test_adx_high_in_strong_trend():
+    # Steadily rising highs/lows -> strong uptrend -> high ADX.
+    candles = [_ohlc(1.10 + i*0.001, 1.10 + i*0.001 + 0.0008,
+                     1.10 + i*0.001, 1.10 + i*0.001 + 0.0006) for i in range(60)]
+    a = ot.adx(candles, 14)
+    assert a is not None and a > 25
+
+
+def test_adx_low_in_chop():
+    # Flat, alternating candles -> no directional movement -> low ADX.
+    candles = []
+    for i in range(60):
+        base = 1.1000 + (0.0002 if i % 2 else -0.0002)
+        candles.append(_ohlc(base, base + 0.0003, base - 0.0003, base))
+    a = ot.adx(candles, 14)
+    assert a is not None and a < 25
+
+
+def test_analyzer_vetoes_choppy_market():
+    orig = (Config.MIN_ADX, Config.MIN_ATR_PIPS)
+    try:
+        Config.MIN_ADX, Config.MIN_ATR_PIPS = 25, 0
+        chop = []
+        for i in range(60):
+            base = 1.1000 + (0.0002 if i % 2 else -0.0002)
+            chop.append(_ohlc(base, base + 0.0003, base - 0.0003, base))
+        assert ot.MarketAnalyzer.approves(chop, "EUR_USD") is False
+    finally:
+        Config.MIN_ADX, Config.MIN_ATR_PIPS = orig
+
+
+def test_analyzer_vetoes_dead_market():
+    orig = (Config.MIN_ADX, Config.MIN_ATR_PIPS)
+    try:
+        Config.MIN_ADX, Config.MIN_ATR_PIPS = 0, 5  # require 5-pip ATR
+        dead = [_ohlc(1.1000, 1.10005, 1.09995, 1.1000) for _ in range(30)]  # ~1 pip range
+        v = ot.MarketAnalyzer.analyze(dead, "EUR_USD")
+        assert v["approved"] is False and "dead market" in v["reason"]
+    finally:
+        Config.MIN_ADX, Config.MIN_ATR_PIPS = orig

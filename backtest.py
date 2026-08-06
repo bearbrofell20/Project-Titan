@@ -22,7 +22,9 @@ from __future__ import annotations
 import sys
 
 import oanda_trader as ot
-from oanda_trader import Config, OandaClient, STRATEGIES, completed_candles, pip_size
+from oanda_trader import (
+    Config, MarketAnalyzer, OandaClient, STRATEGIES, completed_candles, pip_size,
+)
 
 
 # Typical OANDA practice spreads, in pips, subtracted from every round-trip.
@@ -154,9 +156,14 @@ def main():
             candles = history[inst]
             if len(candles) < 30:
                 continue
+            def sig_fn(w, _i=inst, _d=detector):
+                s = _d.get_signal(w, _i)
+                if s and Config.ANALYZER and not MarketAnalyzer.approves(w, _i):
+                    return None  # analyzer veto
+                return s
+
             trades = simulate(
-                candles,
-                lambda w, _i=inst: detector.get_signal(w, _i),
+                candles, sig_fn,
                 Config.STOP_LOSS_PIPS, Config.TAKE_PROFIT_PIPS, pip_size(inst),
                 spread_pips=spread_for(inst),
             )
