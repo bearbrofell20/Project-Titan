@@ -21,8 +21,8 @@ from typing import Dict, List, Optional
 
 from .client import KalshiClient
 from .config import Config
-from .models import Market, OrderIntent, Position
-from .risk import RiskLimits, RiskManager
+from .models import Action, Market, OrderIntent, OrderType, Position, Side
+from .risk import RiskLimits, RiskManager, cash_out_pnl_cents, should_cash_out
 from .strategies.base import Strategy
 
 log = logging.getLogger("kalshi_trader")
@@ -63,13 +63,49 @@ class TradingEngine:
 
         positions_list = self._safe_positions()
         positions: Dict[str, Position] = {p.ticker: p for p in positions_list}
+        market_by_ticker: Dict[str, Market] = {m.ticker: m for m in markets}
+
+        # Rule: cash out any position we can close for a profit (always allowed,
+        # even below the cash floor — closing raises cash).
+        if self.config.cash_out_positive:
+            self._cash_out_positive(positions_list, market_by_ticker)
+
+        # Rule: never OPEN new positions when available cash is below the floor.
+        if not self._cash_above_floor():
+            log.info(
+                "cash floor: available < $%.2f — no new entries this tick",
+                self.config.min_cash_cents / 100,
+            )
+            return self.stats
 
         intents = self.strategy.generate(markets, positions)
         self.stats.intents_generated += len(intents)
-
         for intent in intents:
             self._handle_intent(intent, positions_list)
         return self.stats
+
+    def _cash_above_floor(self) -> bool:
+        """True if available cash is at/above the floor. Fails safe (blocks) if
+        the balance can't be confirmed."""
+        if self.config.dry_run and not self.config.api_key_id:
+            return True  # offline dry-run: nothing real happens, allow entries
+        try:
+            return self.client.get_balance_cents() >= self.config.min_cash_cents
+        except Exception as exc:
+            log.warning("balance check failed, blocking new entries: %s", exc)
+            return False
+
+    def _cash_out_positive(self, positions: List[Position], markets: Dict[str, Market]) -> None:
+        """Close any position that can currently be sold for a profit."""
+        for p in positions:
+            m = markets.get(p.ticker)
+            if m is None or not should_cash_out(p, m):
+                continue
+            intent = _close_intent(p, m)
+            if intent is None:
+                continue
+            log.info("CASH-OUT %s (+%dc)", p.ticker, cash_out_pnl_cents(p, m))
+            self._handle_intent(intent, positions)
 
     def _safe_positions(self) -> List[Position]:
         """Fetch positions, tolerating dry-run runs without credentials."""
@@ -128,6 +164,27 @@ class TradingEngine:
             log.info("interrupted; shutting down cleanly")
         log.info("engine stopped: %s", self.stats)
         return self.stats
+
+
+def _close_intent(position: Position, market: Market) -> Optional[OrderIntent]:
+    """Build the SELL order that closes `position` at the current bid."""
+    if position.quantity > 0:  # long Yes -> sell Yes
+        if market.yes_bid is None:
+            return None
+        return OrderIntent(
+            ticker=position.ticker, action=Action.SELL, side=Side.YES,
+            quantity=position.quantity, order_type=OrderType.LIMIT,
+            limit_price_cents=market.yes_bid, reason="cash-out positive",
+        )
+    if position.quantity < 0:  # long No -> sell No
+        if market.no_bid is None:
+            return None
+        return OrderIntent(
+            ticker=position.ticker, action=Action.SELL, side=Side.NO,
+            quantity=abs(position.quantity), order_type=OrderType.LIMIT,
+            limit_price_cents=market.no_bid, reason="cash-out positive",
+        )
+    return None
 
 
 def _fmt(intent: OrderIntent) -> str:

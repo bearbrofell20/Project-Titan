@@ -17,14 +17,19 @@ class _StubStrategy(Strategy):
 class _StubClient:
     """A client that records submissions instead of hitting the network."""
 
-    def __init__(self):
+    def __init__(self, balance_cents=1_000_00, positions=None):
         self.submitted = []
+        self.balance_cents = balance_cents
+        self._positions = positions or []
 
     def get_markets(self, **kwargs):
         return []
 
     def get_positions(self):
-        return []
+        return list(self._positions)
+
+    def get_balance_cents(self):
+        return self.balance_cents
 
     def place_order(self, intent, client_order_id):
         self.submitted.append((intent, client_order_id))
@@ -76,3 +81,39 @@ def test_risk_rejection_blocks_submit():
     assert stats.orders_rejected == 1
     assert stats.orders_submitted == 0
     assert client.submitted == []
+
+
+# --- Kalshi rules: cash floor + cash-out ------------------------------------
+from kalshi_trader.models import Position
+
+
+def test_no_entries_below_cash_floor():
+    # Available cash $3 < $5 floor -> strategy entry must be blocked.
+    config = Config(dry_run=False, api_key_id="k", private_key_path="/dev/null",
+                    min_cash_cents=5_00)
+    client = _StubClient(balance_cents=3_00)
+    engine = TradingEngine(config, client, _StubStrategy([_intent()]))
+    engine.run_once(markets=[_market()])
+    assert client.submitted == []           # nothing opened
+    assert engine.stats.orders_submitted == 0
+
+
+def test_entries_allowed_above_cash_floor():
+    config = Config(dry_run=False, api_key_id="k", private_key_path="/dev/null",
+                    min_cash_cents=5_00)
+    client = _StubClient(balance_cents=50_00)
+    engine = TradingEngine(config, client, _StubStrategy([_intent()]))
+    engine.run_once(markets=[_market()])
+    assert engine.stats.orders_submitted == 1
+
+
+def test_cash_out_positive_position():
+    # Hold 10 Yes @ 40c; market yes_bid is 49c -> profitable -> auto cash-out.
+    config = Config(dry_run=False, api_key_id="k", private_key_path="/dev/null")
+    pos = Position(ticker="X", quantity=10, avg_price_cents=40)
+    client = _StubClient(balance_cents=50_00, positions=[pos])
+    engine = TradingEngine(config, client, _StubStrategy([]))
+    engine.run_once(markets=[_market()])   # _market has yes_bid=49
+    # A closing SELL YES order was submitted for the position.
+    assert any(i.action is Action.SELL and i.side is Side.YES and i.quantity == 10
+               for i, _ in client.submitted)

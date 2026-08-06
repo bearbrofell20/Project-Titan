@@ -60,6 +60,11 @@ class Config:
     max_open_exposure_cents: int = 100_00  # $100.00 expressed in cents
     max_daily_loss_cents: int = 50_00      # $50.00 expressed in cents
 
+    # Rule: never OPEN new positions when available cash is below this floor.
+    min_cash_cents: int = 5_00             # $5.00
+    # Rule: whenever a position can be closed for a profit, cash it out.
+    cash_out_positive: bool = True
+
     # --- Engine ----------------------------------------------------------
     poll_interval_seconds: float = 30.0
 
@@ -98,6 +103,8 @@ class Config:
             max_position_per_market=_int("KALSHI_MAX_POSITION_PER_MARKET", 50),
             max_open_exposure_cents=_int("KALSHI_MAX_OPEN_EXPOSURE_CENTS", 100_00),
             max_daily_loss_cents=_int("KALSHI_MAX_DAILY_LOSS_CENTS", 50_00),
+            min_cash_cents=_int("KALSHI_MIN_CASH_CENTS", 5_00),
+            cash_out_positive=_bool("KALSHI_CASH_OUT_POSITIVE", True),
             poll_interval_seconds=float(os.environ.get("KALSHI_POLL_INTERVAL", "30")),
         )
 

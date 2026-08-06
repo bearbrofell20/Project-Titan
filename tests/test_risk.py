@@ -55,3 +55,37 @@ def test_exposure_counts_existing_positions():
     # existing 90c + new 1*50 = 140c > 120c cap
     d = _mgr(max_open_exposure_cents=120).check(_intent(qty=1, price=50), positions)
     assert not d.approved
+
+
+# --- cash-out ("take any positive") -----------------------------------------
+from kalshi_trader.models import Market as _Market
+from kalshi_trader.risk import cash_out_pnl_cents, should_cash_out
+
+
+def _mkt(yes_bid=None, no_bid=None):
+    return _Market(ticker="X", title="X", status="active", yes_bid=yes_bid,
+                   yes_ask=None, no_bid=no_bid, no_ask=None, last_price=None)
+
+
+def test_cash_out_long_yes_profit():
+    p = Position(ticker="X", quantity=10, avg_price_cents=40)
+    assert cash_out_pnl_cents(p, _mkt(yes_bid=55)) == (55 - 40) * 10
+    assert should_cash_out(p, _mkt(yes_bid=55)) is True
+
+
+def test_cash_out_long_yes_not_profitable():
+    p = Position(ticker="X", quantity=10, avg_price_cents=40)
+    assert should_cash_out(p, _mkt(yes_bid=40)) is False   # flat, not positive
+    assert should_cash_out(p, _mkt(yes_bid=30)) is False   # loss
+
+
+def test_cash_out_long_no_profit():
+    p = Position(ticker="X", quantity=-8, avg_price_cents=45)
+    assert cash_out_pnl_cents(p, _mkt(no_bid=60)) == (60 - 45) * 8
+    assert should_cash_out(p, _mkt(no_bid=60)) is True
+
+
+def test_cash_out_none_when_unquoted():
+    p = Position(ticker="X", quantity=10, avg_price_cents=40)
+    assert cash_out_pnl_cents(p, _mkt(yes_bid=None)) is None
+    assert should_cash_out(p, _mkt(yes_bid=None)) is False

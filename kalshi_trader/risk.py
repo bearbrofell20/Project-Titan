@@ -94,3 +94,31 @@ class RiskManager:
                 )
 
         return RiskDecision(True, "ok")
+
+
+# ---------------------------------------------------------------------------
+# Cash-out ("take any positive") helpers
+# ---------------------------------------------------------------------------
+
+
+def cash_out_pnl_cents(position, market):
+    """Cents you'd realise by closing `position` now, or None if not quotable.
+
+    A long-Yes position is closed by selling Yes at the Yes bid; a long-No
+    position by selling No at the No bid. P/L = (sell price - avg cost) * qty.
+    """
+    if position.quantity > 0:  # long Yes
+        if market.yes_bid is None:
+            return None
+        return (market.yes_bid - position.avg_price_cents) * position.quantity
+    if position.quantity < 0:  # long No
+        if market.no_bid is None:
+            return None
+        return (market.no_bid - position.avg_price_cents) * abs(position.quantity)
+    return None
+
+
+def should_cash_out(position, market):
+    """True when the position can be closed right now for a positive P/L."""
+    pnl = cash_out_pnl_cents(position, market)
+    return pnl is not None and pnl > 0
