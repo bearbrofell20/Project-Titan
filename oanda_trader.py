@@ -36,6 +36,8 @@ from pathlib import Path
 
 import requests
 
+from probation import Probation, ProbationConfig
+
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
@@ -975,6 +977,8 @@ class OandaBot:
         self.running = True
         self.stats_errors = 0  # cycles that hit (and survived) an error
         self._rate_cache = {}  # quote currency -> USD rate, refreshed each cycle
+        # Probation: the bot's testing week, enforced in code (see probation.py).
+        self.probation = Probation(ProbationConfig.from_env(), Config.LOG_DIR)
 
         mode = "DRY-RUN" if Config.DRY_RUN else ("LIVE" if Config.is_live_endpoint() else "DEMO")
         logger.info("=" * 60)
@@ -996,6 +1000,18 @@ class OandaBot:
     # -- startup checks ----------------------------------------------------
     def preflight(self):
         """Verify the account is reachable and its currency matches our sizing."""
+        # Purgatory gate: a bot that failed its testing week does not trade
+        # again until a human deletes the lockout file.
+        notice = self.probation.enforce_lockout()
+        if notice:
+            logger.error("=" * 60)
+            logger.error("⛓️  BOT IS IN PURGATORY — refusing to trade.")
+            for ln in notice.splitlines():
+                logger.error(f"  {ln}")
+            logger.error(f"  Release it by deleting '{self.probation.purgatory_path}'.")
+            logger.error("=" * 60)
+            return False
+
         acct = self.client.get_account_details()
         if not acct:
             logger.error("Preflight failed: could not fetch account details "
@@ -1151,6 +1167,15 @@ class OandaBot:
             logger.error("Aborting: preflight checks failed.")
             return
 
+        # Start (or resume) the testing week, baselined on current NAV.
+        acct0 = self.client.get_account_details() or {}
+        baseline_nav = float(acct0.get("NAV", acct0.get("balance", 0)) or 0)
+        self.probation.start(baseline_nav)
+        logger.info(f"⏳ Probation active — baseline NAV ${baseline_nav:.2f}, "
+                    f"trial {self.probation.cfg.trial_days:g} day(s), "
+                    f"pass = net ≥ ${self.probation.cfg.min_pnl:+.2f} with "
+                    f"≥ {self.probation.cfg.min_trades} trades.")
+
         cycle = 0
         while self.running:
             cycle += 1
@@ -1178,6 +1203,15 @@ class OandaBot:
                 account = self.client.get_account_details()
                 if account:
                     logger.info(f"Account balance: ${float(account.get('balance', 0)):.2f}")
+                    # Update the trial scorecard and enforce the verdict.
+                    nav = float(account.get("NAV", account.get("balance", 0)) or 0)
+                    standing = self.probation.record(
+                        current_nav=nav, trades=len(self.trade_logger.trades))
+                    logger.info(standing.line)
+                    if standing.locked:
+                        logger.error("Trial failed — bot is now in purgatory. Shutting down.")
+                        self.running = False
+                        break
             except Exception as e:
                 self.stats_errors += 1
                 logger.error(f"Cycle {cycle} error (continuing): {e}")
