@@ -22,6 +22,8 @@ from __future__ import annotations
 import glob
 import json
 import os
+import shlex
+import subprocess
 import threading
 import time
 from datetime import datetime, timezone
@@ -272,6 +274,13 @@ INDEX_HTML = """<!doctype html>
   .globe-label{margin-top:2px;font-size:10px;letter-spacing:.46em;text-transform:uppercase;
     color:rgba(57,255,20,.65);text-shadow:0 0 10px rgba(57,255,20,.4)}
   .globe-sub{font-size:10px;letter-spacing:.2em;color:var(--mut);margin-top:3px}
+  .botbtn{margin-top:16px;font-family:inherit;font-size:12px;letter-spacing:.16em;
+    text-transform:uppercase;cursor:pointer;padding:9px 24px;border-radius:999px;
+    background:transparent;border:1px solid var(--green);color:var(--green);transition:.15s}
+  .botbtn:hover{background:rgba(57,255,20,.09);box-shadow:0 0 16px rgba(57,255,20,.4)}
+  .botbtn.running{background:rgba(57,255,20,.15);box-shadow:0 0 14px rgba(57,255,20,.35);font-weight:700}
+  .botbtn:disabled{opacity:.5;cursor:default;box-shadow:none}
+  .botbtn:focus-visible{outline:2px solid var(--green);outline-offset:3px}
 </style></head>
 <body>
 <header>
@@ -282,6 +291,7 @@ INDEX_HTML = """<!doctype html>
   <canvas id="globe" aria-label="System status globe" role="img"></canvas>
   <div class="globe-label">Titan Core</div>
   <div class="globe-sub" id="globe-sub">initializing…</div>
+  <button id="botbtn" class="botbtn" onclick="botControl()">▶ Start Bot</button>
 </div>
 <div class="wrap">
   <section class="venue" id="oanda"></section>
@@ -341,10 +351,25 @@ async function tick(){
   document.getElementById('kalshi').innerHTML = renderKalshi(s.venues.kalshi);
   const o=s.venues.oanda||{};
   window.__titanLive = o.status==='ok';
+  const running = o.status==='ok' && !!o.bot_running;
+  window.__botRunning = running;
   const sub=document.getElementById('globe-sub');
   if(sub) sub.textContent = o.status==='ok'
-    ? `${o.bot_running?'● live':'○ idle'} · ${money(o.account?.balance||0,0)}`
+    ? `${running?'● live':'○ idle'} · ${money(o.account?.balance||0,0)}`
     : (o.status==='not_configured'?'awaiting credentials':'connection error');
+  const btn=document.getElementById('botbtn');
+  if(btn && !btn.disabled){
+    btn.textContent = running ? '■ Stop Bot' : '▶ Start Bot';
+    btn.classList.toggle('running', running);
+  }
+}
+
+async function botControl(){
+  const btn=document.getElementById('botbtn');
+  const running=window.__botRunning;
+  btn.disabled=true; btn.textContent='…';
+  try{ await fetch(running?'/api/bot/stop':'/api/bot/start',{method:'POST'}); }catch(e){}
+  setTimeout(()=>{ btn.disabled=false; tick(); }, 1400);
 }
 
 /* ---- JARVIS hollow wireframe globe (Canvas, self-contained) ---- */
@@ -416,6 +441,50 @@ tick(); setInterval(tick, 3000);
 </body></html>"""
 
 
+# ---------------------------------------------------------------------------
+# Bot control (Start/Stop button backend)
+# ---------------------------------------------------------------------------
+
+# Command the Start button launches. Override with DASHBOARD_BOT_CMD to point at
+# a different config/bot; it inherits this process's environment (.env, etc.).
+BOT_CMD = os.getenv("DASHBOARD_BOT_CMD", "python3 oanda_trader.py")
+_BOT_PROC = None
+_BOT_LOCK = threading.Lock()
+
+
+def start_bot():
+    global _BOT_PROC
+    with _BOT_LOCK:
+        if _BOT_PROC is not None and _BOT_PROC.poll() is None:
+            return True, "bot already running"
+        # clear a leftover kill switch so the new run isn't stopped instantly
+        try:
+            if os.path.exists(Config.KILL_SWITCH_FILE):
+                os.remove(Config.KILL_SWITCH_FILE)
+        except OSError:
+            pass
+        try:
+            _BOT_PROC = subprocess.Popen(shlex.split(BOT_CMD))
+        except Exception as e:
+            return False, f"failed to start: {e}"
+        return True, "bot started"
+
+
+def stop_bot():
+    """Clean stop via the kill switch (works even if we didn't launch it)."""
+    try:
+        open(Config.KILL_SWITCH_FILE, "w").close()
+    except OSError:
+        pass
+    with _BOT_LOCK:
+        if _BOT_PROC is not None and _BOT_PROC.poll() is None:
+            try:
+                _BOT_PROC.terminate()
+            except Exception:
+                pass
+    return "stop requested (kill switch set)"
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype):
         self.send_response(code)
@@ -431,6 +500,21 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, body, "application/json")
         elif self.path in ("/", "/index.html"):
             self._send(200, INDEX_HTML.encode(), "text/html; charset=utf-8")
+        else:
+            self._send(404, b"not found", "text/plain")
+
+    def do_POST(self):
+        # Control endpoints change trading state, so restrict them to localhost —
+        # exposing the dashboard on a network must never let others start the bot.
+        host = self.client_address[0] if self.client_address else ""
+        if host not in ("127.0.0.1", "::1", "localhost"):
+            self._send(403, b'{"error":"control is localhost-only"}', "application/json")
+            return
+        if self.path.startswith("/api/bot/start"):
+            ok, msg = start_bot()
+            self._send(200, json.dumps({"ok": ok, "message": msg}).encode(), "application/json")
+        elif self.path.startswith("/api/bot/stop"):
+            self._send(200, json.dumps({"ok": True, "message": stop_bot()}).encode(), "application/json")
         else:
             self._send(404, b"not found", "text/plain")
 
