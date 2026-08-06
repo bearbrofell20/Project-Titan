@@ -265,12 +265,24 @@ INDEX_HTML = """<!doctype html>
   .foot{color:var(--mut);font-size:12px;margin-top:12px}
   .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
   .dot.g{background:var(--green)} .dot.r{background:var(--red)}
+  /* JARVIS wireframe globe */
+  .globe-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:26px 0 10px;position:relative}
+  #globe{width:260px;height:260px;max-width:64vw;max-height:64vw;display:block}
+  .globe-label{margin-top:2px;font-size:10px;letter-spacing:.46em;text-transform:uppercase;
+    color:rgba(57,255,20,.65);text-shadow:0 0 10px rgba(57,255,20,.4)}
+  .globe-sub{font-size:10px;letter-spacing:.2em;color:var(--mut);margin-top:3px}
 </style></head>
 <body>
 <header>
   <h1>🤖 Project Titan</h1>
   <span id="clock" class="pill">—</span>
 </header>
+<div class="globe-wrap">
+  <canvas id="globe" aria-label="System status globe" role="img"></canvas>
+  <div class="globe-label">Titan Core</div>
+  <div class="globe-sub" id="globe-sub">initializing…</div>
+</div>
 <div class="wrap">
   <section class="venue" id="oanda"></section>
   <section class="venue" id="kalshi"></section>
@@ -322,12 +334,83 @@ function statusPill(v){
 }
 
 async function tick(){
-  let s; try{ s=await (await fetch('/api/state')).json(); }catch(e){ return; }
+  let s; try{ s=await (await fetch('/api/state')).json(); }catch(e){ window.__titanLive=false; return; }
   if(!s.venues){ return; }
   document.getElementById('clock').textContent = s.time? new Date(s.time).toLocaleTimeString():'—';
   document.getElementById('oanda').innerHTML = renderOanda(s.venues.oanda);
   document.getElementById('kalshi').innerHTML = renderKalshi(s.venues.kalshi);
+  const o=s.venues.oanda||{};
+  window.__titanLive = o.status==='ok';
+  const sub=document.getElementById('globe-sub');
+  if(sub) sub.textContent = o.status==='ok'
+    ? `${o.bot_running?'● live':'○ idle'} · ${money(o.account?.balance||0,0)}`
+    : (o.status==='not_configured'?'awaiting credentials':'connection error');
 }
+
+/* ---- JARVIS hollow wireframe globe (Canvas, self-contained) ---- */
+(function(){
+  const cv=document.getElementById('globe'); if(!cv) return;
+  const ctx=cv.getContext('2d');
+  const reduce=window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+  const PAR=8, MER=12, SEG=46, TILT=-0.38;
+  let W=0,H=0,R=0;
+  function resize(){
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    const size=cv.clientWidth||260;
+    cv.width=size*dpr; cv.height=size*dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    W=size; H=size; R=size*0.40;
+  }
+  resize(); window.addEventListener('resize',resize);
+  function proj(lat,lon,rot){
+    const cl=Math.cos(lat);
+    let x=cl*Math.sin(lon), y=Math.sin(lat), z=cl*Math.cos(lon);
+    const xr=x*Math.cos(rot)+z*Math.sin(rot), zr=-x*Math.sin(rot)+z*Math.cos(rot);
+    const yt=y*Math.cos(TILT)-zr*Math.sin(TILT), zt=y*Math.sin(TILT)+zr*Math.cos(TILT);
+    return {x:W/2+xr*R, y:H/2+yt*R, z:zt};
+  }
+  function seg(a,b){
+    const z=(a.z+b.z)/2, front=z>0;           // hollow: back lines faint -> see-through
+    ctx.strokeStyle=`rgba(57,255,20,${front?0.55:0.11})`;
+    ctx.lineWidth=front?1.1:0.7;
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+  }
+  let rot=0;
+  function frame(){
+    ctx.clearRect(0,0,W,H);
+    const live=window.__titanLive;
+    // outer silhouette ring with glow
+    ctx.save();
+    ctx.strokeStyle=`rgba(57,255,20,${live?0.6:0.32})`;
+    ctx.shadowColor='#39ff14'; ctx.shadowBlur=live?20:10; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(W/2,H/2,R,0,Math.PI*2); ctx.stroke();
+    ctx.restore();
+    // parallels
+    for(let i=1;i<PAR;i++){
+      const lat=-Math.PI/2+i*Math.PI/PAR;
+      for(let s=0;s<SEG;s++)
+        seg(proj(lat,s/SEG*2*Math.PI,rot), proj(lat,(s+1)/SEG*2*Math.PI,rot));
+    }
+    // meridians (pole-to-pole half circles around the sphere)
+    for(let j=0;j<MER;j++){
+      const lon=j*2*Math.PI/MER;
+      for(let s=0;s<SEG;s++){
+        const l1=-Math.PI/2+s/SEG*Math.PI, l2=-Math.PI/2+(s+1)/SEG*Math.PI;
+        seg(proj(l1,lon,rot), proj(l2,lon,rot));
+      }
+    }
+    // core glow
+    ctx.save();
+    const g=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,R*0.5);
+    g.addColorStop(0,`rgba(57,255,20,${live?0.16:0.07})`); g.addColorStop(1,'rgba(57,255,20,0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(W/2,H/2,R*0.5,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+    rot += reduce?0:(live?0.006:0.0028);
+    requestAnimationFrame(frame);
+  }
+  frame();
+})();
+
 tick(); setInterval(tick, 3000);
 </script>
 </body></html>"""
