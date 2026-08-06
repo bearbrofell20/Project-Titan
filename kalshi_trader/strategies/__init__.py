@@ -10,17 +10,21 @@ from __future__ import annotations
 from typing import Dict, Type
 
 from .base import Strategy
+from .crypto import CalibrationLogger, CryptoFairValueStrategy
 from .momentum import MovingAverageCrossStrategy
 from .threshold import MispricingThresholdStrategy
 
 REGISTRY: Dict[str, Type[Strategy]] = {
     "threshold": MispricingThresholdStrategy,
     "momentum": MovingAverageCrossStrategy,
+    "crypto_fairvalue": CryptoFairValueStrategy,
 }
 
 __all__ = [
     "Strategy",
     "MispricingThresholdStrategy",
     "MovingAverageCrossStrategy",
+    "CryptoFairValueStrategy",
+    "CalibrationLogger",
     "REGISTRY",
 ]

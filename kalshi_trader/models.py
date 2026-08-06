@@ -46,6 +46,7 @@ class Market:
     last_price: Optional[int]       # last traded Yes price, in cents
     volume: int = 0
     strike: Optional[float] = None  # numeric strike (e.g. BTC "price to beat")
+    close_time: Optional[str] = None  # ISO-8601 settlement time
 
     @property
     def is_tradable(self) -> bool:
@@ -91,6 +92,7 @@ class Market:
             last_price=cents("last_price"),
             volume=int(data.get("volume", 0) or 0),
             strike=float(strike) if strike is not None else None,
+            close_time=data.get("close_time"),
         )
 
 

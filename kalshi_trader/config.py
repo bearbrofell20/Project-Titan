@@ -67,6 +67,8 @@ class Config:
 
     # --- Engine ----------------------------------------------------------
     poll_interval_seconds: float = 30.0
+    # Restrict the engine to one series (e.g. "KXBTC15M"); None = broad feed.
+    market_series: Optional[str] = None
 
     # --- Derived ---------------------------------------------------------
     base_url: str = field(init=False)
@@ -106,6 +108,7 @@ class Config:
             min_cash_cents=_int("KALSHI_MIN_CASH_CENTS", 5_00),
             cash_out_positive=_bool("KALSHI_CASH_OUT_POSITIVE", True),
             poll_interval_seconds=float(os.environ.get("KALSHI_POLL_INTERVAL", "30")),
+            market_series=os.environ.get("KALSHI_SERIES_TICKER") or None,
         )
 
     def require_credentials(self) -> None:

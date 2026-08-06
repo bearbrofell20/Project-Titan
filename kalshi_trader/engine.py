@@ -59,7 +59,9 @@ class TradingEngine:
         self.stats.ticks += 1
 
         if markets is None:
-            markets = self.client.get_markets(status="open", limit=100)
+            markets = self.client.get_markets(
+                status="open", limit=100, series_ticker=self.config.market_series,
+            )
 
         positions_list = self._safe_positions()
         positions: Dict[str, Position] = {p.ticker: p for p in positions_list}
@@ -70,16 +72,18 @@ class TradingEngine:
         if self.config.cash_out_positive:
             self._cash_out_positive(positions_list, market_by_ticker)
 
-        # Rule: never OPEN new positions when available cash is below the floor.
-        if not self._cash_above_floor():
-            log.info(
-                "cash floor: available < $%.2f — no new entries this tick",
-                self.config.min_cash_cents / 100,
-            )
-            return self.stats
-
+        # Always evaluate the strategy (this also records calibration), so we
+        # observe the model even when we can't trade...
         intents = self.strategy.generate(markets, positions)
         self.stats.intents_generated += len(intents)
+
+        # ...but the cash floor gates order SUBMISSION: no new positions below it.
+        if not self._cash_above_floor():
+            if intents:
+                log.info("cash floor: available < $%.2f — %d signal(s) not submitted",
+                         self.config.min_cash_cents / 100, len(intents))
+            return self.stats
+
         for intent in intents:
             self._handle_intent(intent, positions_list)
         return self.stats
