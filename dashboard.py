@@ -180,6 +180,7 @@ def build_state(oanda_client, kalshi_client) -> dict:
     return {
         "status": "ok",
         "time": datetime.now(timezone.utc).isoformat(),
+        "bots": {"oanda": bot_proc_running("oanda"), "kalshi": bot_proc_running("kalshi")},
         "venues": {
             "oanda": build_oanda_venue(oanda_client),
             "kalshi": build_kalshi_venue(kalshi_client),
@@ -281,6 +282,8 @@ INDEX_HTML = """<!doctype html>
   .botbtn.running{background:rgba(57,255,20,.15);box-shadow:0 0 14px rgba(57,255,20,.35);font-weight:700}
   .botbtn:disabled{opacity:.5;cursor:default;box-shadow:none}
   .botbtn:focus-visible{outline:2px solid var(--green);outline-offset:3px}
+  .botctl{display:flex;gap:12px;margin-top:16px;flex-wrap:wrap;justify-content:center}
+  .botctl .botbtn{margin-top:0}
 </style></head>
 <body>
 <header>
@@ -291,7 +294,10 @@ INDEX_HTML = """<!doctype html>
   <canvas id="globe" aria-label="System status globe" role="img"></canvas>
   <div class="globe-label">Titan Core</div>
   <div class="globe-sub" id="globe-sub">initializing…</div>
-  <button id="botbtn" class="botbtn" onclick="botControl()">▶ Start Bot</button>
+  <div class="botctl">
+    <button id="btn-oanda" class="botbtn" onclick="botControl('oanda')">▶ Forex Bot</button>
+    <button id="btn-kalshi" class="botbtn kalshi" onclick="botControl('kalshi')">▶ Kalshi Bot</button>
+  </div>
 </div>
 <div class="wrap">
   <section class="venue" id="oanda"></section>
@@ -350,26 +356,28 @@ async function tick(){
   document.getElementById('oanda').innerHTML = renderOanda(s.venues.oanda);
   document.getElementById('kalshi').innerHTML = renderKalshi(s.venues.kalshi);
   const o=s.venues.oanda||{};
+  const bots=s.bots||{};
+  window.__bots=bots;
   window.__titanLive = o.status==='ok';
-  const running = o.status==='ok' && !!o.bot_running;
-  window.__botRunning = running;
   const sub=document.getElementById('globe-sub');
   if(sub) sub.textContent = o.status==='ok'
-    ? `${running?'● live':'○ idle'} · ${money(o.account?.balance||0,0)}`
+    ? `${(bots.oanda||bots.kalshi)?'● live':'○ idle'} · ${money(o.account?.balance||0,0)}`
     : (o.status==='not_configured'?'awaiting credentials':'connection error');
-  const btn=document.getElementById('botbtn');
-  if(btn && !btn.disabled){
-    btn.textContent = running ? '■ Stop Bot' : '▶ Start Bot';
-    btn.classList.toggle('running', running);
-  }
+  [['oanda','Forex Bot'],['kalshi','Kalshi Bot']].forEach(([w,label])=>{
+    const b=document.getElementById('btn-'+w);
+    if(!b || b.disabled) return;
+    const run=!!bots[w];
+    b.textContent=(run?'■ Stop ':'▶ Start ')+label;
+    b.classList.toggle('running', run);
+  });
 }
 
-async function botControl(){
-  const btn=document.getElementById('botbtn');
-  const running=window.__botRunning;
-  btn.disabled=true; btn.textContent='…';
-  try{ await fetch(running?'/api/bot/stop':'/api/bot/start',{method:'POST'}); }catch(e){}
-  setTimeout(()=>{ btn.disabled=false; tick(); }, 1400);
+async function botControl(which){
+  const b=document.getElementById('btn-'+which);
+  const run=(window.__bots||{})[which];
+  b.disabled=true; b.textContent='…';
+  try{ await fetch('/api/bot/'+which+'/'+(run?'stop':'start'),{method:'POST'}); }catch(e){}
+  setTimeout(()=>{ b.disabled=false; tick(); }, 1400);
 }
 
 /* ---- JARVIS hollow wireframe globe (Canvas, self-contained) ---- */
@@ -445,44 +453,58 @@ tick(); setInterval(tick, 3000);
 # Bot control (Start/Stop button backend)
 # ---------------------------------------------------------------------------
 
-# Command the Start button launches. Override with DASHBOARD_BOT_CMD to point at
-# a different config/bot; it inherits this process's environment (.env, etc.).
-BOT_CMD = os.getenv("DASHBOARD_BOT_CMD", "python3 oanda_trader.py")
-_BOT_PROC = None
+# Each venue's bot: the command the Start button launches (inherits this
+# process's environment / .env) and the kill-switch file its Stop button sets.
+BOT_CMDS = {
+    "oanda": os.getenv("DASHBOARD_OANDA_CMD", "python3 oanda_trader.py"),
+    "kalshi": os.getenv("DASHBOARD_KALSHI_CMD", "python3 kalshi_bot.py"),
+}
+_KILL = {"oanda": Config.KILL_SWITCH_FILE, "kalshi": "KILL_SWITCH_KALSHI.txt"}
+_PROCS = {"oanda": None, "kalshi": None}
 _BOT_LOCK = threading.Lock()
 
 
-def start_bot():
-    global _BOT_PROC
+def bot_proc_running(which: str) -> bool:
     with _BOT_LOCK:
-        if _BOT_PROC is not None and _BOT_PROC.poll() is None:
-            return True, "bot already running"
-        # clear a leftover kill switch so the new run isn't stopped instantly
+        p = _PROCS.get(which)
+        return p is not None and p.poll() is None
+
+
+def start_bot(which: str):
+    if which not in BOT_CMDS:
+        return False, f"unknown bot {which!r}"
+    with _BOT_LOCK:
+        p = _PROCS.get(which)
+        if p is not None and p.poll() is None:
+            return True, f"{which} already running"
         try:
-            if os.path.exists(Config.KILL_SWITCH_FILE):
-                os.remove(Config.KILL_SWITCH_FILE)
+            if os.path.exists(_KILL[which]):
+                os.remove(_KILL[which])   # clear stale kill switch
         except OSError:
             pass
         try:
-            _BOT_PROC = subprocess.Popen(shlex.split(BOT_CMD))
+            _PROCS[which] = subprocess.Popen(shlex.split(BOT_CMDS[which]))
         except Exception as e:
-            return False, f"failed to start: {e}"
-        return True, "bot started"
+            return False, f"failed to start {which}: {e}"
+        return True, f"{which} started"
 
 
-def stop_bot():
+def stop_bot(which: str):
     """Clean stop via the kill switch (works even if we didn't launch it)."""
-    try:
-        open(Config.KILL_SWITCH_FILE, "w").close()
-    except OSError:
-        pass
+    ks = _KILL.get(which)
+    if ks:
+        try:
+            open(ks, "w").close()
+        except OSError:
+            pass
     with _BOT_LOCK:
-        if _BOT_PROC is not None and _BOT_PROC.poll() is None:
+        p = _PROCS.get(which)
+        if p is not None and p.poll() is None:
             try:
-                _BOT_PROC.terminate()
+                p.terminate()
             except Exception:
                 pass
-    return "stop requested (kill switch set)"
+    return f"{which} stop requested"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -496,8 +518,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/api/state"):
             with _LOCK:
-                body = json.dumps(_STATE).encode()
-            self._send(200, body, "application/json")
+                state = dict(_STATE)
+            # live bot status (not the ~8s-cached snapshot) for responsive buttons
+            state["bots"] = {"oanda": bot_proc_running("oanda"),
+                             "kalshi": bot_proc_running("kalshi")}
+            self._send(200, json.dumps(state).encode(), "application/json")
         elif self.path in ("/", "/index.html"):
             self._send(200, INDEX_HTML.encode(), "text/html; charset=utf-8")
         else:
@@ -510,11 +535,17 @@ class Handler(BaseHTTPRequestHandler):
         if host not in ("127.0.0.1", "::1", "localhost"):
             self._send(403, b'{"error":"control is localhost-only"}', "application/json")
             return
-        if self.path.startswith("/api/bot/start"):
-            ok, msg = start_bot()
+        parts = self.path.split("?")[0].strip("/").split("/")  # api / bot / <which> / <action>
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "bot":
+            which, action = parts[2], parts[3]
+            if action == "start":
+                ok, msg = start_bot(which)
+            elif action == "stop":
+                ok, msg = True, stop_bot(which)
+            else:
+                self._send(404, b'{"error":"unknown action"}', "application/json")
+                return
             self._send(200, json.dumps({"ok": ok, "message": msg}).encode(), "application/json")
-        elif self.path.startswith("/api/bot/stop"):
-            self._send(200, json.dumps({"ok": True, "message": stop_bot()}).encode(), "application/json")
         else:
             self._send(404, b"not found", "text/plain")
 

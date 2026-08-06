@@ -14,6 +14,7 @@ the CLI only sets behind an explicit ``--live`` flag and a typed confirmation.
 from __future__ import annotations
 
 import logging
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -156,6 +157,9 @@ class TradingEngine:
         )
         try:
             while max_ticks is None or self.stats.ticks < max_ticks:
+                if os.path.exists(self.config.kill_switch_file):
+                    log.info("kill switch present — shutting down cleanly")
+                    break
                 try:
                     self.run_once()
                 except Exception as exc:

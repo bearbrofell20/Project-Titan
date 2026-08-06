@@ -69,6 +69,7 @@ class Config:
     poll_interval_seconds: float = 30.0
     # Restrict the engine to one series (e.g. "KXBTC15M"); None = broad feed.
     market_series: Optional[str] = None
+    kill_switch_file: str = "KILL_SWITCH_KALSHI.txt"
 
     # --- Derived ---------------------------------------------------------
     base_url: str = field(init=False)
@@ -109,6 +110,7 @@ class Config:
             cash_out_positive=_bool("KALSHI_CASH_OUT_POSITIVE", True),
             poll_interval_seconds=float(os.environ.get("KALSHI_POLL_INTERVAL", "30")),
             market_series=os.environ.get("KALSHI_SERIES_TICKER") or None,
+            kill_switch_file=os.environ.get("KALSHI_KILL_SWITCH_FILE", "KILL_SWITCH_KALSHI.txt"),
         )
 
     def require_credentials(self) -> None:
