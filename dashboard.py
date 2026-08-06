@@ -176,11 +176,40 @@ def build_kalshi_venue(client) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _probation_standing() -> dict | None:
+    """Read the OANDA bot's testing-week scorecard, if a trial is under way."""
+    try:
+        from probation import Probation, ProbationConfig
+        prob = Probation(ProbationConfig.from_env(), Config.LOG_DIR)
+        if prob.state is None:
+            return None
+        cfg, st = prob.cfg, prob.state
+        elapsed = prob.days_elapsed()
+        pnl = prob.pnl()
+        passing = pnl >= cfg.min_pnl and st.trades >= cfg.min_trades
+        return {
+            "verdict": st.verdict,                  # on_trial | passed | failed
+            "locked": prob.is_locked(),
+            "day": round(elapsed, 2),
+            "trial_days": cfg.trial_days,
+            "days_left": round(max(0.0, cfg.trial_days - elapsed), 2),
+            "pnl": round(pnl, 2),
+            "min_pnl": cfg.min_pnl,
+            "trades": st.trades,
+            "min_trades": cfg.min_trades,
+            "passing": passing,
+            "baseline_nav": round(st.baseline_nav, 2),
+        }
+    except Exception:
+        return None
+
+
 def build_state(oanda_client, kalshi_client) -> dict:
     return {
         "status": "ok",
         "time": datetime.now(timezone.utc).isoformat(),
         "bots": {"oanda": bot_proc_running("oanda"), "kalshi": bot_proc_running("kalshi")},
+        "probation": _probation_standing(),
         "venues": {
             "oanda": build_oanda_venue(oanda_client),
             "kalshi": build_kalshi_venue(kalshi_client),
@@ -284,6 +313,20 @@ INDEX_HTML = """<!doctype html>
   .botbtn:focus-visible{outline:2px solid var(--green);outline-offset:3px}
   .botctl{display:flex;gap:12px;margin-top:16px;flex-wrap:wrap;justify-content:center}
   .botctl .botbtn{margin-top:0}
+  /* Probation scorecard */
+  #probation{margin-top:18px;width:100%;max-width:640px;padding:0 16px}
+  .trial{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--card)}
+  .trial.pass{border-color:var(--green);box-shadow:0 0 18px rgba(57,255,20,.18)}
+  .trial.fail{border-color:#7a2b2b;box-shadow:0 0 18px rgba(180,40,40,.18)}
+  .trial-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+  .trial-title{font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--mut)}
+  .trial-verdict{font-size:12px;font-weight:700;letter-spacing:.1em}
+  .trial-verdict.passing{color:var(--green)} .trial-verdict.failing{color:#d98b8b}
+  .trial-verdict.locked{color:#e06a6a}
+  .trial-bar{height:7px;border-radius:6px;background:#10160f;overflow:hidden;border:1px solid var(--line)}
+  .trial-bar > i{display:block;height:100%;background:linear-gradient(90deg,rgba(57,255,20,.5),var(--green));transition:width .4s}
+  .trial-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;margin-top:11px;font-size:12px}
+  .trial-grid .k{color:var(--mut)} .trial-grid .val{float:right;font-variant-numeric:tabular-nums}
 </style></head>
 <body>
 <header>
@@ -298,6 +341,7 @@ INDEX_HTML = """<!doctype html>
     <button id="btn-oanda" class="botbtn" onclick="botControl('oanda')">▶ Forex Bot</button>
     <button id="btn-kalshi" class="botbtn kalshi" onclick="botControl('kalshi')">▶ Kalshi Bot</button>
   </div>
+  <div id="probation"></div>
 </div>
 <div class="wrap">
   <section class="venue" id="oanda"></section>
@@ -349,12 +393,39 @@ function statusPill(v){
   return `<span class="pill warn">error</span>`;
 }
 
+function renderProbation(p){
+  const el=document.getElementById('probation');
+  if(!el) return;
+  if(!p){ el.innerHTML=''; return; }
+  const pct=Math.max(0,Math.min(100, (p.day/p.trial_days)*100));
+  let cls='', vtxt='', vcls='';
+  if(p.verdict==='passed'){ cls='pass'; vtxt='🎓 PASSED'; vcls='passing'; }
+  else if(p.verdict==='failed'){ cls='fail'; vtxt='⛓️ PURGATORY'; vcls='locked'; }
+  else { vtxt = p.passing?'PASSING':'FAILING'; vcls = p.passing?'passing':'failing'; }
+  const pnlCls=p.pnl>0?'pos':p.pnl<0?'neg':'mut';
+  el.innerHTML=
+    `<div class="trial ${cls}">`+
+      `<div class="trial-top"><span class="trial-title">Testing Week</span>`+
+      `<span class="trial-verdict ${vcls}">${vtxt}</span></div>`+
+      `<div class="trial-bar"><i style="width:${pct}%"></i></div>`+
+      `<div class="trial-grid">`+
+        `<div class="k">Day <span class="val">${p.day.toFixed(2)} / ${p.trial_days}</span></div>`+
+        `<div class="k">Net P/L <span class="val ${pnlCls}">${money(p.pnl)}</span></div>`+
+        `<div class="k">Days left <span class="val">${p.days_left.toFixed(2)}</span></div>`+
+        `<div class="k">To pass <span class="val">≥ ${money(p.min_pnl)}</span></div>`+
+        `<div class="k">Trades <span class="val">${p.trades} / ≥${p.min_trades}</span></div>`+
+        `<div class="k">Baseline <span class="val">${money(p.baseline_nav)}</span></div>`+
+      `</div>`+
+    `</div>`;
+}
+
 async function tick(){
   let s; try{ s=await (await fetch('/api/state')).json(); }catch(e){ window.__titanLive=false; return; }
   if(!s.venues){ return; }
   document.getElementById('clock').textContent = s.time? new Date(s.time).toLocaleTimeString():'—';
   document.getElementById('oanda').innerHTML = renderOanda(s.venues.oanda);
   document.getElementById('kalshi').innerHTML = renderKalshi(s.venues.kalshi);
+  renderProbation(s.probation);
   const o=s.venues.oanda||{};
   const bots=s.bots||{};
   window.__bots=bots;
