@@ -338,7 +338,10 @@ def test_should_cut_loss_guards_bad_margin():
 
 
 def test_default_strategy_is_the_winner():
-    assert Config.STRATEGY == "stochastic"
+    # ema_trend on tight majors with the trend filter is the only config that
+    # cleared spread costs in the backtest (PF ~1.4); it is the default.
+    assert Config.STRATEGY == "ema_trend"
+    assert Config.TREND_FILTER is True
 
 
 # --- market analyzer (ATR / ADX pre-trade filter) --------------------------

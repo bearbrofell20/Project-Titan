@@ -43,6 +43,26 @@ from probation import Probation, ProbationConfig
 # ============================================================================
 
 
+def _load_dotenv(path: str = ".env") -> None:
+    """Minimal ``.env`` loader (no dependency). Real env vars always win.
+
+    Loaded before :class:`Config` is evaluated so ``OANDA_*`` settings in
+    ``.env`` take effect for every launch (including the dashboard's button).
+    """
+    p = Path(path)
+    if not p.exists():
+        return
+    for raw in p.read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+_load_dotenv()
+
+
 def _env_bool(name: str, default: bool = False) -> bool:
     raw = os.getenv(name)
     if raw is None or raw == "":
@@ -86,8 +106,10 @@ class Config:
     RISK_PER_TRADE = _env_float("OANDA_RISK_PER_TRADE", 10.0)  # in ACCOUNT_CURRENCY
 
     # Strategy selection -----------------------------------------------------
-    # Default is the backtest winner (stochastic mean-reversion).
-    STRATEGY = os.getenv("OANDA_STRATEGY", "stochastic")
+    # Default is the spread-aware backtest winner: ema_trend (trend-following)
+    # on tight majors with the 20/50 EMA trend filter — the only config that
+    # cleared costs (PF ~1.4). Trend-following needs TREND_FILTER on (below).
+    STRATEGY = os.getenv("OANDA_STRATEGY", "ema_trend")
 
     # Momentum (RSI) thresholds (env-tunable) --------------------------------
     RSI_PERIOD = _env_int("OANDA_RSI_PERIOD", 14)
@@ -111,7 +133,7 @@ class Config:
     TREND_SLOW = _env_int("OANDA_TREND_SLOW", 50)
     # When true, gate the active strategy's entries to the 20/50 EMA direction:
     # only longs when 20>50, only shorts when 20<50.
-    TREND_FILTER = _env_bool("OANDA_TREND_FILTER", False)
+    TREND_FILTER = _env_bool("OANDA_TREND_FILTER", True)
 
     # Breakout strategy ------------------------------------------------------
     BREAKOUT_LOOKBACK = _env_int("OANDA_BREAKOUT_LOOKBACK", 20)
