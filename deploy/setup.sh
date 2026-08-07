@@ -25,9 +25,17 @@ if [ ! -f .env ]; then
 OANDA_API_TOKEN=$TOKEN
 OANDA_ACCOUNT_ID=$ACCT
 OANDA_API_URL=https://api-fxpractice.oanda.com
-OANDA_STRATEGY=ema_pullback
+# Backtest-winning config: ema_trend on tight majors, signals-only.
+OANDA_STRATEGY=ema_trend
+OANDA_INSTRUMENTS=EUR_USD,GBP_USD,USD_JPY,USD_CHF,AUD_USD,USD_CAD
+OANDA_TREND_FILTER=true
+OANDA_MIN_OPEN_TRADES=0
 OANDA_RISK_PER_TRADE=10
 OANDA_DRY_RUN=false
+# Testing-week probation: must net +\$50 over 7 days to graduate.
+OANDA_TRIAL_DAYS=7
+OANDA_TRIAL_MIN_PNL=50
+OANDA_TRIAL_MIN_TRADES=5
 EOF
   chmod 600 .env
   echo "Wrote .env (permissions 600)."

@@ -3,7 +3,9 @@
 # Put your secrets in a local `.env` file next to this one (git-ignored):
 #   OANDA_API_TOKEN=your-practice-token
 #   OANDA_ACCOUNT_ID=101-001-39975042-001
-#   OANDA_STRATEGY=ema_pullback
+#
+# The defaults below are the backtest-winning config (ema_trend on tight
+# majors, signals-only, testing-week probation). Override any of them in .env.
 services:
   titan:
     build: .
@@ -11,11 +13,21 @@ services:
     ports:
       - "8080:8080"                  # dashboard
     environment:
+      # --- credentials / account ---
       OANDA_API_TOKEN: "${OANDA_API_TOKEN}"
       OANDA_ACCOUNT_ID: "${OANDA_ACCOUNT_ID:-101-001-39975042-001}"
       OANDA_API_URL: "${OANDA_API_URL:-https://api-fxpractice.oanda.com}"
-      OANDA_STRATEGY: "${OANDA_STRATEGY:-ema_pullback}"
-      OANDA_RISK_PER_TRADE: "${OANDA_RISK_PER_TRADE:-10}"
       OANDA_DRY_RUN: "${OANDA_DRY_RUN:-false}"
+      # --- winning strategy config ---
+      OANDA_STRATEGY: "${OANDA_STRATEGY:-ema_trend}"
+      OANDA_INSTRUMENTS: "${OANDA_INSTRUMENTS:-EUR_USD,GBP_USD,USD_JPY,USD_CHF,AUD_USD,USD_CAD}"
+      OANDA_TREND_FILTER: "${OANDA_TREND_FILTER:-true}"
+      OANDA_MIN_OPEN_TRADES: "${OANDA_MIN_OPEN_TRADES:-0}"
+      OANDA_RISK_PER_TRADE: "${OANDA_RISK_PER_TRADE:-10}"
+      # --- testing-week probation ---
+      OANDA_TRIAL_DAYS: "${OANDA_TRIAL_DAYS:-7}"
+      OANDA_TRIAL_MIN_PNL: "${OANDA_TRIAL_MIN_PNL:-50}"
+      OANDA_TRIAL_MIN_TRADES: "${OANDA_TRIAL_MIN_TRADES:-5}"
     volumes:
-      - ./trade_logs:/data/trade_logs # persist trade + bot logs on the host
+      # persists trade logs AND the probation trial file across restarts/reboots
+      - ./trade_logs:/data/trade_logs

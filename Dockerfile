@@ -6,7 +6,8 @@ WORKDIR /app
 # The OANDA bot + dashboard need only `requests` (dashboard is pure stdlib).
 RUN pip install --no-cache-dir requests
 
-COPY oanda_trader.py dashboard.py run_all.py ./
+COPY oanda_trader.py probation.py dashboard.py run_all.py kalshi_bot.py ./
+COPY kalshi_trader/ ./kalshi_trader/
 
 # Dashboard port
 EXPOSE 8080
