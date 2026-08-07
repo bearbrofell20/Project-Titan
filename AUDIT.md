@@ -60,3 +60,26 @@ not a tuning problem — chasing a better backtest here would be curve-fitting.
   top-up during this work).
 
 Until then the honest stance is: **paper only, no live risk.**
+
+## Power check on 1.6 years (update)
+
+Because 120 days can't distinguish a small edge from zero, the candidate set was
+re-tested on **~586 days of M15** across the 6 majors (40k bars/pair) — a
+pre-registered short list (trend, mean-reversion, Donchian breakout, and
+**opening-range breakout** at the London and NY opens), each judged on
+all/OOS/holdout expectancy **and** an 8-window walk-forward.
+
+The larger sample pulled every candidate to its true mean — slightly negative
+after costs. The best of the entire field, an NY opening-range breakout, came in
+at expectancy **+0.005R (all) / −0.018 (OOS) / +0.001 (holdout)**, PF 1.01,
+positive in only **3 of 8** walk-forward windows: dead-flat break-even,
+indistinguishable from zero and negative once any commission is added. The
+120-day "positive OOS" cells did **not** survive.
+
+**Conclusion:** price-only technical/structural strategies on major FX show no
+positive edge after realistic costs, at the timeframes and horizon tested. This
+is consistent with majors being highly efficient at retail scale. Continuing to
+sweep such strategies is data-snooping, not progress. A real edge must come from
+a *different, tested* source (a calibrated predictive feature, a cross-asset or
+event signal, or a structural/execution advantage) — evaluated on this same
+harness with the same all/OOS/holdout + walk-forward discipline.

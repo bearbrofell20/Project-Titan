@@ -78,6 +78,56 @@ def bollinger_reversion_signals(candles: List[dict], period: int = 20, k: float 
     return out
 
 
+def opening_range_breakout_signals(
+    candles: List[dict],
+    open_hour: int = 7,       # session open in UTC (7 = London, 13 = NY)
+    range_bars: int = 4,      # bars after the open that define the range
+    window_end_hour: int = 11,  # stop taking new breakouts after this UTC hour
+) -> List[Optional[str]]:
+    """Opening-range breakout: each day, the first ``range_bars`` after
+    ``open_hour`` set a high/low box; the first close to break out (within the
+    session window) fires BUY (above) or SELL (below). One entry per day.
+
+    Economic rationale: liquidity and order flow arrive at the session open, so a
+    decisive break of the opening range tends to continue — a *structural* effect,
+    not a fitted parameter. Days/hours are derived from the candle epoch (UTC).
+    """
+    out: List[Optional[str]] = [None] * len(candles)
+
+    def hour(t):
+        return int((t // 3600) % 24)
+
+    def day(t):
+        return t // 86400
+
+    cur_day = None
+    hi = lo = None
+    seen = 0
+    fired = False
+    for i, c in enumerate(candles):
+        t = c["time"]
+        d = day(t)
+        h = hour(t)
+        if d != cur_day:                    # new UTC day -> reset the box
+            cur_day, hi, lo, seen, fired = d, None, None, 0, False
+        if h < open_hour or h > window_end_hour:
+            continue
+        m = c["mid"]
+        hi_i, lo_i, close = float(m["h"]), float(m["l"]), float(m["c"])
+        if seen < range_bars:               # building the opening range
+            hi = hi_i if hi is None else max(hi, hi_i)
+            lo = lo_i if lo is None else min(lo, lo_i)
+            seen += 1
+            continue
+        if fired or hi is None:
+            continue
+        if close > hi:
+            out[i] = "BUY"; fired = True
+        elif close < lo:
+            out[i] = "SELL"; fired = True
+    return out
+
+
 def atr_series(candles: List[dict], period: int = 14) -> List[Optional[float]]:
     """ATR per bar, matching oanda_trader.atr (simple mean of the last `period`
     true ranges). None until `period` bars of history exist at that index."""

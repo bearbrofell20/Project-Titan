@@ -36,6 +36,10 @@ def precompute(strategy: str, candles, trend_filter: bool = True, **kw):
         return fast.donchian_breakout_signals(candles, kw.get("lookback", 20))
     if strategy == "meanrev":
         return fast.bollinger_reversion_signals(candles, kw.get("period", 20), kw.get("k", 2.0))
+    if strategy == "orb":
+        return fast.opening_range_breakout_signals(
+            candles, kw.get("open_hour", 7), kw.get("range_bars", 4),
+            kw.get("window_end_hour", 11))
     raise ValueError(f"no fast precompute for {strategy!r}")
 
 
@@ -56,7 +60,7 @@ def make_sig(strategy: str, trend_filter: bool = True):
 
 def run(strategy: str, exits: bt.ExitConfig, costs: bt.Costs = bt.Costs(),
         gates: bt.Gates = bt.Gates(), pairs: Optional[List[str]] = None,
-        gran: str = "M5", days: int = 120, trend_filter: bool = True) -> Dict:
+        gran: str = "M5", days: int = 120, trend_filter: bool = True, **params) -> Dict:
     """Run across pairs; return pooled trades (sorted by entry time) + per-pair."""
     pairs = pairs or MAJORS
     need_adx = gates.min_adx is not None
@@ -65,7 +69,7 @@ def run(strategy: str, exits: bt.ExitConfig, costs: bt.Costs = bt.Costs(),
     per_pair, skips = {}, {}
     for inst in pairs:
         candles = data.load_history(inst, gran, days=days)
-        signals = precompute(strategy, candles, trend_filter=trend_filter)
+        signals = precompute(strategy, candles, trend_filter=trend_filter, **params)
         adx_arr = fast.adx_series(candles, gates.adx_period) if need_adx else None
         atr_arr = fast.atr_series(candles, exits.atr_period) if need_atr else None
         res = bt.simulate(candles, None, ot.pip_size(inst),

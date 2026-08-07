@@ -66,3 +66,25 @@ def test_bollinger_reversion_direction():
     base.append(_c(1.10, 1.10, 1.09, 1.0900, 20))   # sharp drop -> BUY (fade)
     sig = fast.bollinger_reversion_signals(base, period=20, k=2.0)
     assert sig[-1] == "BUY"
+
+
+def _ci(o, h, l, c, t):
+    # candle with an INT epoch time, as the data layer produces
+    return {"mid": {"o": o, "h": h, "l": l, "c": c}, "time": int(t)}
+
+
+def test_opening_range_breakout_fires_once_per_day_on_break():
+    # Build one UTC day: bars at 07:00 (range) then a decisive break upward.
+    base_epoch = 7 * 3600  # 07:00 UTC on day 0
+    candles = []
+    # range bars (flat box 1.1000-1.1010) for the first 4 bars
+    for k in range(4):
+        candles.append(_ci(1.1000, 1.1010, 1.1000, 1.1005, base_epoch + k * 900))
+    # breakout bar: close above the box high
+    candles.append(_ci(1.1010, 1.1030, 1.1010, 1.1025, base_epoch + 4 * 900))
+    # a later bar that would also break — must NOT fire again same day
+    candles.append(_ci(1.1030, 1.1050, 1.1030, 1.1045, base_epoch + 5 * 900))
+    sig = fast.opening_range_breakout_signals(candles, open_hour=7, range_bars=4, window_end_hour=11)
+    assert sig[4] == "BUY"
+    assert sig[5] is None      # only one entry per day
+    assert sig[:4] == [None, None, None, None]  # no entries while building the box
