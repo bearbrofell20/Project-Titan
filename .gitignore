@@ -226,3 +226,4 @@ kalshi_private_key*
 oanda_config.py
 trade_logs/
 KILL_SWITCH.txt
+market_data/
