@@ -23,7 +23,8 @@ import sys
 
 import oanda_trader as ot
 from oanda_trader import (
-    Config, MarketAnalyzer, OandaClient, STRATEGIES, completed_candles, pip_size,
+    Config, MarketAnalyzer, OandaClient, STRATEGIES, candle_epoch,
+    completed_candles, gate_signal, htf_bias_at, htf_bias_series, pip_size,
 )
 
 
@@ -144,9 +145,19 @@ def main():
     # Fetch candle history once per instrument (shared across strategies).
     print(f"Fetching {count} {Config.TIMEFRAME} candles for {len(Config.INSTRUMENTS)} pairs...")
     history = {}
+    htf = {}
     for inst in Config.INSTRUMENTS:
         raw = client.get_candles(inst, granularity=Config.TIMEFRAME, count=count)
         history[inst] = completed_candles(raw)
+        # Higher-timeframe bias series (only when the HTF gate is on).
+        if Config.HTF_FILTER:
+            htf_raw = client.get_candles(
+                inst, granularity=Config.HTF_GRANULARITY,
+                count=Config.HTF_EMA_PERIOD + count // 12 + 60)
+            htf[inst] = htf_bias_series(completed_candles(htf_raw), Config.HTF_EMA_PERIOD)
+
+    if Config.HTF_FILTER:
+        print(f"  + {Config.HTF_GRANULARITY} {Config.HTF_EMA_PERIOD}-EMA higher-timeframe gate")
 
     results = {}
     for name in selected:
@@ -157,7 +168,13 @@ def main():
             if len(candles) < 30:
                 continue
             def sig_fn(w, _i=inst, _d=detector):
-                s = _d.get_signal(w, _i)
+                raw_sig = _d.get_signal(w, _i)
+                if not raw_sig:
+                    return None
+                # apply the same trend gates the live bot uses
+                hb = htf_bias_at(htf.get(_i, []), candle_epoch(w[-1]["time"])) \
+                    if Config.HTF_FILTER else None
+                s = gate_signal(raw_sig, w, _i, htf_bias=hb)
                 if s and Config.ANALYZER and not MarketAnalyzer.approves(w, _i):
                     return None  # analyzer veto
                 return s

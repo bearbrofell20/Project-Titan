@@ -425,3 +425,58 @@ def test_validate_catches_insufficient_candle_count():
         assert any("CANDLE_COUNT" in p for p in ot.validate_config("tok"))
     finally:
         Config.CANDLE_COUNT, Config.STRATEGY = orig
+
+
+# --- higher-timeframe (HTF) trend gate -------------------------------------
+def _hc(close, t):
+    return {"mid": {"o": str(close), "h": str(close), "l": str(close), "c": str(close)},
+            "time": str(int(t)), "complete": True}
+
+
+def test_htf_bias_series_marks_above_below_ema():
+    # rising series: last closes are above their own EMA -> BUY bias
+    candles = [_hc(1.0 + i * 0.01, 1000 + i * 3600) for i in range(120)]
+    series = ot.htf_bias_series(candles, period=100)
+    assert series, "expected a bias series once enough history exists"
+    assert series[-1][1] == "BUY"
+    # each entry is (epoch, bias)
+    assert series[-1][0] == ot.candle_epoch(candles[-1]["time"])
+
+
+def test_htf_bias_series_downtrend():
+    candles = [_hc(3.0 - i * 0.01, 1000 + i * 3600) for i in range(120)]
+    assert ot.htf_bias_series(candles, period=100)[-1][1] == "SELL"
+
+
+def test_htf_bias_series_too_short_is_empty():
+    candles = [_hc(1.0, 1000 + i * 3600) for i in range(50)]
+    assert ot.htf_bias_series(candles, period=100) == []
+
+
+def test_htf_bias_at_no_lookahead():
+    series = [(1000, "SELL"), (2000, "BUY"), (3000, "SELL")]
+    assert ot.htf_bias_at(series, 999) is None       # before the first bar
+    assert ot.htf_bias_at(series, 1500) == "SELL"    # only the 1000 bar has closed
+    assert ot.htf_bias_at(series, 2000) == "BUY"     # exactly on a close
+    assert ot.htf_bias_at(series, 5000) == "SELL"    # latest available
+
+
+def test_htf_bias_now_uses_latest():
+    candles = [_hc(1.0 + i * 0.01, 1000 + i * 3600) for i in range(120)]
+    assert ot.htf_bias_now(candles, period=100) == "BUY"
+
+
+def test_gate_signal_blocks_against_htf(monkeypatch):
+    monkeypatch.setattr(Config, "TREND_FILTER", False)
+    monkeypatch.setattr(Config, "HTF_FILTER", True)
+    flat = [_hc(1.0, 1000 + i * 300) for i in range(60)]
+    assert ot.gate_signal("BUY", flat, "EUR_USD", htf_bias="SELL") is None  # blocked
+    assert ot.gate_signal("BUY", flat, "EUR_USD", htf_bias="BUY") == "BUY"  # allowed
+    assert ot.gate_signal("BUY", flat, "EUR_USD", htf_bias=None) == "BUY"   # no bias -> skip gate
+
+
+def test_gate_signal_htf_off_ignores_bias(monkeypatch):
+    monkeypatch.setattr(Config, "TREND_FILTER", False)
+    monkeypatch.setattr(Config, "HTF_FILTER", False)
+    flat = [_hc(1.0, 1000 + i * 300) for i in range(60)]
+    assert ot.gate_signal("BUY", flat, "EUR_USD", htf_bias="SELL") == "BUY"

@@ -135,6 +135,14 @@ class Config:
     # only longs when 20>50, only shorts when 20<50.
     TREND_FILTER = _env_bool("OANDA_TREND_FILTER", True)
 
+    # Higher-timeframe trend gate: use a slow EMA on a *higher* granularity (e.g.
+    # 100-EMA on H1) as the directional bias, and only take entries in that
+    # direction. This is the "high-timeframe bias is king" idea — a truer trend
+    # filter than same-chart EMAs. Off by default; enable with OANDA_HTF_FILTER.
+    HTF_FILTER = _env_bool("OANDA_HTF_FILTER", False)
+    HTF_GRANULARITY = os.getenv("OANDA_HTF_GRANULARITY", "H1")
+    HTF_EMA_PERIOD = _env_int("OANDA_HTF_EMA", 100)
+
     # Breakout strategy ------------------------------------------------------
     BREAKOUT_LOOKBACK = _env_int("OANDA_BREAKOUT_LOOKBACK", 20)
 
@@ -840,6 +848,45 @@ def ema_trend_bias(candles, fast, slow):
     return None
 
 
+def htf_bias_series(htf_candles, period):
+    """Per-bar directional bias from a slow EMA on higher-timeframe candles.
+
+    Returns a list of ``(epoch, bias)`` — one entry per higher-timeframe bar
+    that has ``period`` bars of history behind it. ``bias`` is 'BUY' when the
+    bar's close is above the EMA, 'SELL' below. Built once, then queried per
+    lower-timeframe bar with :func:`htf_bias_at`.
+    """
+    closes = [float(c["mid"]["c"]) for c in htf_candles]
+    if len(closes) < period + 1:
+        return []
+    e = ema_series(closes, period)
+    out = []
+    for k in range(period, len(htf_candles)):
+        bias = "BUY" if closes[k] > e[k] else ("SELL" if closes[k] < e[k] else None)
+        out.append((candle_epoch(htf_candles[k]["time"]), bias))
+    return out
+
+
+def htf_bias_at(series, epoch):
+    """The most recent higher-timeframe bias at/just before ``epoch``.
+
+    Uses only bars that had *closed* by ``epoch`` (no look-ahead). Returns None
+    when no higher-timeframe bar has completed yet.
+    """
+    import bisect
+    if not series:
+        return None
+    epochs = [e for e, _ in series]
+    idx = bisect.bisect_right(epochs, epoch) - 1
+    return series[idx][1] if idx >= 0 else None
+
+
+def htf_bias_now(htf_candles, period):
+    """Latest higher-timeframe bias (for live trading on the newest data)."""
+    series = htf_bias_series(htf_candles, period)
+    return series[-1][1] if series else None
+
+
 class EmaTrendDetector:
     """Dual-EMA (20/50) trend crossover: buy when the fast EMA crosses above the
     slow EMA, sell when it crosses below. Trades only on the flip (one entry per
@@ -875,19 +922,29 @@ STRATEGIES = {
 }
 
 
-def signal_for(candles, instrument):
-    """Entry signal from the active strategy, optionally gated by the trend filter.
+def gate_signal(sig, candles, instrument, htf_bias=None):
+    """Apply the trend gates to a raw entry signal (shared by live + backtest).
 
-    With TREND_FILTER on, a signal is only allowed if it matches the 20/50 EMA
-    bias ("only buy when 20>50, only sell when 20<50").
+    With TREND_FILTER on, the signal must match the same-chart 20/50 EMA bias.
+    With HTF_FILTER on, it must also match ``htf_bias`` — the higher-timeframe
+    direction (e.g. the H1 100-EMA). A gate whose bias is None is skipped.
     """
-    detector = STRATEGIES.get(Config.STRATEGY, MomentumDetector)
-    sig = detector.get_signal(candles, instrument)
-    if sig and Config.TREND_FILTER:
+    if not sig:
+        return None
+    if Config.TREND_FILTER:
         bias = ema_trend_bias(candles, Config.TREND_FAST, Config.TREND_SLOW)
         if bias and sig != bias:
-            return None  # entry is against the trend — block it
+            return None  # against the same-chart trend
+    if Config.HTF_FILTER and htf_bias and sig != htf_bias:
+        return None      # against the higher-timeframe trend
     return sig
+
+
+def signal_for(candles, instrument, htf_bias=None):
+    """Entry signal from the active strategy, gated by the configured filters."""
+    detector = STRATEGIES.get(Config.STRATEGY, MomentumDetector)
+    sig = detector.get_signal(candles, instrument)
+    return gate_signal(sig, candles, instrument, htf_bias=htf_bias)
 
 
 def should_take_profit(unrealized_pl, margin_used, pct):
@@ -1161,7 +1218,15 @@ class OandaBot:
                 return
             self.last_candle_time[instrument] = latest_time
 
-            signal = signal_for(candles, instrument)
+            # Higher-timeframe bias (e.g. H1 100-EMA), if the HTF gate is on.
+            htf_bias = None
+            if Config.HTF_FILTER:
+                htf_raw = self.client.get_candles(
+                    instrument, granularity=Config.HTF_GRANULARITY,
+                    count=Config.HTF_EMA_PERIOD + 60)
+                htf_bias = htf_bias_now(completed_candles(htf_raw), Config.HTF_EMA_PERIOD)
+
+            signal = signal_for(candles, instrument, htf_bias=htf_bias)
             if not signal:
                 return
 
