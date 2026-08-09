@@ -254,268 +254,336 @@ def refresher():
 INDEX_HTML = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Project Titan — Dashboard</title>
+<title>Project Titan — Core</title>
 <style>
-  /* Neon terminal palette: neon green, black, grey (single-theme by design). */
-  :root{--bg:#000000;--card:#0c100e;--line:#1c231f;--fg:#cdd6d1;--mut:#8f9995;
-        --green:#39ff14;--red:#8f9995;--amber:#8f9995;--blue:#39ff14;--purple:#57e06a;}
+  /* JARVIS HUD — committed single-theme dark control surface. */
+  :root{
+    --bg:#02060a; --bg2:#030b12; --panel:rgba(8,20,30,.72); --line:rgba(53,224,255,.16);
+    --cyan:#35e0ff; --cyan-soft:rgba(53,224,255,.62); --cyan-dim:rgba(53,224,255,.28);
+    --amber:#ffb43a; --green:#33ff9e; --red:#ff5c6a; --fg:#c7ecf6; --mut:#5f8496;
+    --glow:0 0 18px rgba(53,224,255,.45);
+  }
   *{box-sizing:border-box}
-  body{margin:0;color:var(--fg);
-    background:radial-gradient(1100px 460px at 50% -12%, #08120a 0%, var(--bg) 62%);
-    font:14px/1.5 ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace}
-  header{display:flex;align-items:center;gap:12px;padding:16px 22px;border-bottom:1px solid var(--line)}
-  header h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.14em;color:var(--green);
-    text-shadow:0 0 16px rgba(57,255,20,.45)}
-  .card .v, .pos{text-shadow:0 0 12px rgba(57,255,20,.18)}
-  .pill{font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--mut)}
-  .pill.on{color:var(--green);border-color:var(--green)}
-  .pill.demo{color:var(--blue);border-color:var(--blue)}
-  .pill.warn{color:var(--amber);border-color:var(--amber)}
-  .wrap{padding:20px 22px;max-width:1100px;margin:0 auto}
-  section.venue{margin-bottom:34px}
-  .vhead{display:flex;align-items:center;gap:12px;margin:0 0 14px}
-  .vhead h2{font-size:15px;margin:0;font-weight:650}
-  .vhead .kalshi{color:var(--purple)}
-  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:13px 15px}
-  .card .k{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--mut)}
-  .card .v{font-size:21px;font-weight:650;margin-top:5px}
-  h3{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--mut);margin:16px 0 8px}
-  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
-  th,td{text-align:right;padding:8px 12px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+  html,body{margin:0;height:100%}
+  body{background:
+      radial-gradient(1200px 700px at 50% -10%, #06202e 0%, rgba(2,6,10,0) 60%),
+      repeating-linear-gradient(0deg, rgba(53,224,255,.035) 0 1px, transparent 1px 3px),
+      var(--bg);
+    color:var(--fg); font:13px/1.5 ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    letter-spacing:.02em; overflow-x:hidden;}
+  /* faint moving scanline */
+  body::after{content:"";position:fixed;left:0;right:0;height:120px;pointer-events:none;z-index:60;
+    background:linear-gradient(180deg,rgba(53,224,255,0),rgba(53,224,255,.06),rgba(53,224,255,0));
+    animation:scan 7s linear infinite;}
+  @keyframes scan{0%{top:-120px}100%{top:100%}}
+  @media (prefers-reduced-motion:reduce){body::after{animation:none;display:none}}
+  /* corner brackets */
+  .bracket{position:fixed;width:34px;height:34px;border:2px solid var(--cyan-dim);z-index:50;pointer-events:none}
+  .bracket.tl{top:10px;left:10px;border-right:0;border-bottom:0}
+  .bracket.tr{top:10px;right:10px;border-left:0;border-bottom:0}
+  .bracket.bl{bottom:10px;left:10px;border-right:0;border-top:0}
+  .bracket.br{bottom:10px;right:10px;border-left:0;border-top:0}
+
+  header{display:flex;align-items:center;gap:14px;padding:16px 26px;border-bottom:1px solid var(--line);
+    text-transform:uppercase}
+  header h1{font-size:14px;margin:0;font-weight:700;letter-spacing:.42em;color:var(--cyan);
+    text-shadow:var(--glow)}
+  .sys{font-size:10px;letter-spacing:.28em;color:var(--mut)}
+  .spacer{flex:1}
+  .stat{display:flex;align-items:center;gap:7px;font-size:10px;letter-spacing:.26em;color:var(--cyan-soft)}
+  .live-dot{width:8px;height:8px;border-radius:50%;background:var(--cyan);box-shadow:var(--glow);
+    animation:pulse 1.6s ease-in-out infinite}
+  .live-dot.off{background:var(--mut);box-shadow:none;animation:none}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  #clock{font-size:10px;letter-spacing:.2em;color:var(--mut)}
+
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 22px 70px}
+
+  /* --- reactor hero --- */
+  .hero{display:flex;flex-direction:column;align-items:center;padding:14px 0 6px;position:relative}
+  #reactor{width:340px;height:340px;max-width:78vw;max-height:78vw;display:block}
+  .core-read{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none}
+  .core-read .lbl{font-size:9px;letter-spacing:.5em;color:var(--cyan-soft);text-transform:uppercase}
+  .core-read .big{font-size:26px;font-weight:700;color:#eafaff;text-shadow:var(--glow);margin-top:4px;
+    font-variant-numeric:tabular-nums}
+  .core-read .sub{font-size:10px;letter-spacing:.24em;color:var(--mut);margin-top:4px;text-transform:uppercase}
+  .ctl{display:flex;gap:12px;margin-top:14px;flex-wrap:wrap;justify-content:center}
+  .btn{font:inherit;font-size:11px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer;
+    padding:9px 22px;background:rgba(53,224,255,.06);border:1px solid var(--cyan-dim);color:var(--cyan);
+    clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);transition:.15s}
+  .btn:hover{background:rgba(53,224,255,.16);box-shadow:var(--glow)}
+  .btn.on{background:rgba(51,255,158,.14);border-color:var(--green);color:var(--green);
+    box-shadow:0 0 16px rgba(51,255,158,.4);font-weight:700}
+  .btn:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}
+
+  /* --- gauge pods --- */
+  .pods{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:14px;margin:26px 0 6px}
+  .pod{position:relative;aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    border-radius:50%;text-align:center;
+    background:radial-gradient(circle at 50% 50%, rgba(53,224,255,.05), rgba(2,6,10,0) 70%);}
+  .pod::before{content:"";position:absolute;inset:0;border-radius:50%;
+    background:var(--ring, conic-gradient(var(--cyan) 0deg, rgba(53,224,255,.10) 0deg));
+    -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 6px),#000 calc(100% - 6px));
+            mask:radial-gradient(farthest-side,transparent calc(100% - 6px),#000 calc(100% - 6px));
+    filter:drop-shadow(0 0 6px rgba(53,224,255,.5));}
+  .pod::after{content:"";position:absolute;inset:9px;border-radius:50%;border:1px solid var(--line)}
+  .pod .k{font-size:8.5px;letter-spacing:.22em;color:var(--mut);text-transform:uppercase;z-index:1}
+  .pod .v{font-size:18px;font-weight:700;color:#eafaff;z-index:1;margin-top:3px;font-variant-numeric:tabular-nums;
+    text-shadow:0 0 12px rgba(53,224,255,.35)}
+  .pod .v.pos{color:var(--green);text-shadow:0 0 12px rgba(51,255,158,.4)}
+  .pod .v.neg{color:var(--red);text-shadow:0 0 12px rgba(255,92,106,.4)}
+
+  /* --- panels --- */
+  .grid{display:grid;grid-template-columns:1fr;gap:16px;margin-top:8px}
+  @media(min-width:820px){.grid.two{grid-template-columns:1fr 1fr}}
+  .panel{position:relative;background:var(--panel);border:1px solid var(--line);
+    clip-path:polygon(0 0,calc(100% - 16px) 0,100% 16px,100% 100%,16px 100%,0 calc(100% - 16px));
+    padding:14px 16px 16px;overflow:hidden}
+  .panel::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;
+    background:linear-gradient(90deg,var(--cyan),transparent);opacity:.6}
+  .ph{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .ph h2{font-size:11px;margin:0;letter-spacing:.32em;text-transform:uppercase;color:var(--cyan);font-weight:700}
+  .ph .pill{font-size:9px;letter-spacing:.2em;padding:2px 8px;border:1px solid var(--line);border-radius:2px;color:var(--mut);text-transform:uppercase}
+  .ph .pill.on{color:var(--cyan);border-color:var(--cyan-dim)}
+  .ph .pill.demo{color:var(--amber);border-color:rgba(255,180,58,.4)}
+  .ph .pill.warn{color:var(--amber);border-color:rgba(255,180,58,.4)}
+  .foot{color:var(--mut);font-size:10px;letter-spacing:.08em;margin-top:10px;text-transform:uppercase}
+  .foot b{color:var(--cyan-soft)}
+  .tblwrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+  th,td{text-align:right;padding:7px 10px;border-bottom:1px solid rgba(53,224,255,.08);white-space:nowrap}
   th:first-child,td:first-child{text-align:left}
-  th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);font-weight:600}
+  th{font-size:9px;text-transform:uppercase;letter-spacing:.18em;color:var(--mut);font-weight:600}
+  tbody tr:hover{background:rgba(53,224,255,.05)}
   tr:last-child td{border-bottom:none}
   .pos{color:var(--green)} .neg{color:var(--red)} .mut{color:var(--mut)}
-  .tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px}
-  .tag.buy{background:rgba(46,160,67,.15);color:var(--green)}
-  .tag.sell{background:rgba(248,81,73,.15);color:var(--red)}
-  .tag.none{color:var(--mut)}
   .up{color:var(--green)} .down{color:var(--red)}
-  .rsi-lo{color:var(--green);font-weight:650} .rsi-hi{color:var(--red);font-weight:650}
-  .note{background:var(--card);border:1px dashed var(--line);border-radius:10px;padding:14px 16px;color:var(--mut)}
-  .foot{color:var(--mut);font-size:12px;margin-top:12px}
-  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
-  .dot.g{background:var(--green)} .dot.r{background:var(--red)}
-  /* JARVIS wireframe globe */
-  .globe-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;
-    padding:26px 0 10px;position:relative}
-  #globe{width:260px;height:260px;max-width:64vw;max-height:64vw;display:block}
-  .globe-label{margin-top:2px;font-size:10px;letter-spacing:.46em;text-transform:uppercase;
-    color:rgba(57,255,20,.65);text-shadow:0 0 10px rgba(57,255,20,.4)}
-  .globe-sub{font-size:10px;letter-spacing:.2em;color:var(--mut);margin-top:3px}
-  .botbtn{margin-top:16px;font-family:inherit;font-size:12px;letter-spacing:.16em;
-    text-transform:uppercase;cursor:pointer;padding:9px 24px;border-radius:999px;
-    background:transparent;border:1px solid var(--green);color:var(--green);transition:.15s}
-  .botbtn:hover{background:rgba(57,255,20,.09);box-shadow:0 0 16px rgba(57,255,20,.4)}
-  .botbtn.running{background:rgba(57,255,20,.15);box-shadow:0 0 14px rgba(57,255,20,.35);font-weight:700}
-  .botbtn:disabled{opacity:.5;cursor:default;box-shadow:none}
-  .botbtn:focus-visible{outline:2px solid var(--green);outline-offset:3px}
-  .botctl{display:flex;gap:12px;margin-top:16px;flex-wrap:wrap;justify-content:center}
-  .botctl .botbtn{margin-top:0}
-  /* Probation scorecard */
-  #probation{margin-top:18px;width:100%;max-width:640px;padding:0 16px}
-  .trial{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--card)}
-  .trial.pass{border-color:var(--green);box-shadow:0 0 18px rgba(57,255,20,.18)}
-  .trial.fail{border-color:#7a2b2b;box-shadow:0 0 18px rgba(180,40,40,.18)}
+  .rsi-lo{color:var(--green);font-weight:700} .rsi-hi{color:var(--red);font-weight:700}
+  .tag{font-size:9px;font-weight:700;padding:2px 8px;letter-spacing:.1em;
+    clip-path:polygon(4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%,0 4px)}
+  .tag.buy{background:rgba(51,255,158,.16);color:var(--green)}
+  .tag.sell{background:rgba(255,92,106,.16);color:var(--red)}
+  .tag.none{color:var(--mut)}
+  .note{color:var(--mut);font-size:11px;letter-spacing:.06em}
+
+  /* --- probation --- */
   .trial-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
-  .trial-title{font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--mut)}
-  .trial-verdict{font-size:12px;font-weight:700;letter-spacing:.1em}
-  .trial-verdict.passing{color:var(--green)} .trial-verdict.failing{color:#d98b8b}
-  .trial-verdict.locked{color:#e06a6a}
-  .trial-bar{height:7px;border-radius:6px;background:#10160f;overflow:hidden;border:1px solid var(--line)}
-  .trial-bar > i{display:block;height:100%;background:linear-gradient(90deg,rgba(57,255,20,.5),var(--green));transition:width .4s}
-  .trial-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;margin-top:11px;font-size:12px}
-  .trial-grid .k{color:var(--mut)} .trial-grid .val{float:right;font-variant-numeric:tabular-nums}
+  .trial-verdict{font-size:11px;font-weight:700;letter-spacing:.14em}
+  .trial-verdict.passing{color:var(--green)} .trial-verdict.failing{color:var(--amber)}
+  .trial-verdict.locked{color:var(--red)}
+  .trial-bar{height:6px;background:rgba(53,224,255,.08);border:1px solid var(--line);overflow:hidden}
+  .trial-bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--cyan-dim),var(--cyan));
+    box-shadow:var(--glow);transition:width .5s}
+  .trial-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px 20px;margin-top:12px;font-size:11px}
+  .trial-grid .k{color:var(--mut);text-transform:uppercase;letter-spacing:.12em;font-size:10px}
+  .trial-grid .val{float:right;color:#eafaff;font-variant-numeric:tabular-nums}
 </style></head>
 <body>
+<div class="bracket tl"></div><div class="bracket tr"></div>
+<div class="bracket bl"></div><div class="bracket br"></div>
 <header>
-  <h1>🤖 Project Titan</h1>
-  <span id="clock" class="pill">—</span>
+  <h1>◆ Project Titan</h1>
+  <span class="sys">Core · Autonomous Trading</span>
+  <span class="spacer"></span>
+  <span class="stat"><span id="live-dot" class="live-dot off"></span><span id="live-txt">initializing</span></span>
+  <span id="clock">—</span>
 </header>
-<div class="globe-wrap">
-  <canvas id="globe" aria-label="System status globe" role="img"></canvas>
-  <div class="globe-label">Titan Core</div>
-  <div class="globe-sub" id="globe-sub">initializing…</div>
-  <div class="botctl">
-    <button id="btn-oanda" class="botbtn" onclick="botControl('oanda')">▶ Forex Bot</button>
-    <button id="btn-kalshi" class="botbtn kalshi" onclick="botControl('kalshi')">▶ Kalshi Bot</button>
+
+<div class="hero">
+  <canvas id="reactor" aria-label="Titan core reactor" role="img"></canvas>
+  <div class="core-read">
+    <div class="lbl">Titan Core</div>
+    <div class="big" id="core-balance">—</div>
+    <div class="sub" id="core-status">standby</div>
   </div>
-  <div id="probation"></div>
+  <div class="ctl">
+    <button id="btn-oanda" class="btn" onclick="botControl('oanda')">▶ Forex Bot</button>
+    <button id="btn-kalshi" class="btn" onclick="botControl('kalshi')">▶ Kalshi Bot</button>
+  </div>
 </div>
+
 <div class="wrap">
-  <section class="venue" id="oanda"></section>
-  <section class="venue" id="kalshi"></section>
+  <div class="pods" id="pods"></div>
+  <div id="probation"></div>
+  <section id="oanda"></section>
+  <section id="kalshi"></section>
 </div>
+
 <script>
-const money=(n,d=2)=>(n<0?'-$':'$')+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
-const pnl=n=>`<span class="${n>0?'pos':n<0?'neg':'mut'}">${money(n)}</span>`;
+const money=(n,d=2)=>(n<0?'-$':'$')+Math.abs(+n||0).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
 const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const clsPL=n=>n>0?'pos':n<0?'neg':'mut';
 function rsiCls(v){if(v==null)return'mut';if(v<30)return'rsi-lo';if(v>70)return'rsi-hi';return'';}
-function trend(t){if(t==='UP')return'<span class="up">▲ up</span>';if(t==='DOWN')return'<span class="down">▼ down</span>';return'<span class="mut">— flat</span>';}
+function trend(t){if(t==='UP')return'<span class="up">▲</span>';if(t==='DOWN')return'<span class="down">▼</span>';return'<span class="mut">—</span>';}
 function sig(s){if(s==='BUY')return'<span class="tag buy">BUY</span>';if(s==='SELL')return'<span class="tag sell">SELL</span>';return'<span class="tag none">—</span>';}
 
-function renderOanda(v){
-  const head=`<div class="vhead"><h2>💱 ${esc(v.label)}</h2>`+statusPill(v)+`</div>`;
-  if(v.status==='not_configured') return head+`<div class="note">${esc(v.reason)}</div>`;
-  if(v.status==='error') return head+`<div class="note">⚠ ${esc(v.error)}</div>`;
-  const a=v.account, m=v.meta;
-  const bot=`<span class="pill ${v.bot_running?'on':'warn'}"><span class="dot ${v.bot_running?'g':'r'}"></span>bot ${v.bot_running?'running':'stopped'}</span>`;
-  const cards=[['Balance',money(a.balance)],['NAV',money(a.nav)],['Unrealized P/L',pnl(a.unrealizedPL)],
-    ['Realized P/L',pnl(a.realizedPL)],['Open trades',a.openTradeCount],['Margin used',money(a.marginUsed)]]
-    .map(([k,val])=>`<div class="card"><div class="k">${k}</div><div class="v">${val}</div></div>`).join('');
-  const pos=v.positions.length?v.positions.map(p=>`<tr><td>${p.instrument}</td><td>${p.units}</td><td>${p.avgPrice||'—'}</td><td>${pnl(p.unrealizedPL)}</td></tr>`).join(''):'<tr><td colspan="4" class="mut">No open positions</td></tr>';
-  const adxCell=r=>r.adx==null?'<span class="mut">—</span>':`<span class="${r.adx>=25?'pos':'mut'}">${r.adx}</span>`;
-  const sigCell=r=>r.vetoed?'<span class="tag none" title="analyzer veto">⊘ veto</span>':sig(r.signal);
-  const mk=v.market.map(r=>`<tr><td>${r.instrument}</td><td>${r.price??'—'}</td><td class="${rsiCls(r.rsi)}">${r.rsi??'—'}</td><td>${adxCell(r)}</td><td>${trend(r.trend)}</td><td>${sigCell(r)}</td></tr>`).join('');
-  const tr=v.trades.length?v.trades.map(t=>`<tr><td>${new Date(t.timestamp).toLocaleTimeString()}</td><td>${t.instrument}</td><td>${t.direction}</td><td>${t.units}</td><td>${(+t.entry_price).toFixed(5)}</td></tr>`).join(''):'<tr><td colspan="5" class="mut">No trades logged yet</td></tr>';
-  return head+`<div class="cards" style="margin-bottom:8px">${cards}</div>`+
-    `<div class="foot">${bot} &nbsp; Strategy: <b>${esc(v.strategy)}</b> · Risk $${m.risk}/trade · SL ${m.sl}/TP ${m.tp} pips · ${m.pairs} pairs · ${esc(v.env)}</div>`+
-    `<h3>Open positions</h3><table><thead><tr><th>Instrument</th><th>Units</th><th>Avg price</th><th>Unrealized P/L</th></tr></thead><tbody>${pos}</tbody></table>`+
-    `<h3>Live signals</h3><table><thead><tr><th>Pair</th><th>Price</th><th>RSI</th><th>ADX</th><th>Trend</th><th>Signal</th></tr></thead><tbody>${mk}</tbody></table>`+
-    `<h3>Recent trades</h3><table><thead><tr><th>Time</th><th>Instrument</th><th>Dir</th><th>Units</th><th>Entry</th></tr></thead><tbody>${tr}</tbody></table>`;
+function pod(k,val,{cls='',pct=null}={}){
+  const ring = pct==null
+    ? 'conic-gradient(rgba(53,224,255,.25) 0deg, rgba(53,224,255,.08) 0deg)'
+    : `conic-gradient(var(--cyan) ${Math.max(0,Math.min(100,pct))*3.6}deg, rgba(53,224,255,.08) 0deg)`;
+  return `<div class="pod" style="--ring:${ring}"><div class="k">${k}</div><div class="v ${cls}">${val}</div></div>`;
 }
 
-function renderKalshi(v){
-  const head=`<div class="vhead"><h2 class="kalshi">🎲 ${esc(v.label)}</h2>`+statusPill(v)+`</div>`;
-  if(v.status==='not_configured') return head+`<div class="note">${esc(v.reason)}<br>Add Kalshi API credentials to watch it here.</div>`;
-  if(v.status==='error') return head+`<div class="note">⚠ ${esc(v.error)}</div>`;
+function renderPods(v){
+  const el=document.getElementById('pods');
+  if(!v||v.status!=='ok'||!v.account){ el.innerHTML=''; return; }
   const a=v.account;
-  const cards=`<div class="card"><div class="k">Balance</div><div class="v">${money(a.balance)}</div></div>`;
-  const pos=v.positions.length?v.positions.map(p=>`<tr><td>${esc(p.ticker)}</td><td>${p.quantity}</td><td>${p.avgPriceCents}¢</td><td>${money(p.exposure)}</td></tr>`).join(''):'<tr><td colspan="4" class="mut">No open positions</td></tr>';
-  return head+`<div class="cards" style="margin-bottom:8px">${cards}</div>`+
-    `<h3>Open positions</h3><table><thead><tr><th>Ticker</th><th>Contracts</th><th>Avg price</th><th>Exposure</th></tr></thead><tbody>${pos}</tbody></table>`;
+  const marginPct = a.nav>0 ? (a.marginUsed/a.nav*100) : 0;
+  const tradePct = 100*Math.min(1,(a.openTradeCount||0)/8);
+  el.innerHTML =
+    pod('Balance', money(a.balance,0)) +
+    pod('NAV', money(a.nav,0)) +
+    pod('Unrealized', money(a.unrealizedPL), {cls:clsPL(a.unrealizedPL), pct: Math.min(100,Math.abs(a.unrealizedPL))}) +
+    pod('Realized', money(a.realizedPL), {cls:clsPL(a.realizedPL)}) +
+    pod('Margin', marginPct.toFixed(1)+'%', {pct:marginPct}) +
+    pod('Trades', (a.openTradeCount||0), {pct:tradePct});
 }
 
 function statusPill(v){
-  if(v.status==='ok') return `<span class="pill ${v.env==='DEMO'?'demo':'on'}">${v.env||'connected'}</span>`;
-  if(v.status==='not_configured') return `<span class="pill">not configured</span>`;
+  if(v.status==='ok') return `<span class="pill ${v.env==='DEMO'?'demo':'on'}">${v.env||'online'}</span>`;
+  if(v.status==='not_configured') return `<span class="pill">offline</span>`;
   return `<span class="pill warn">error</span>`;
+}
+
+function renderOanda(v){
+  const head=`<div class="ph"><h2>▚ ${esc(v.label)}</h2>${statusPill(v)}</div>`;
+  if(v.status==='not_configured') return `<div class="panel">${head}<div class="note">${esc(v.reason||'not configured')}</div></div>`;
+  if(v.status==='error') return `<div class="panel">${head}<div class="note">⚠ ${esc(v.error)}</div></div>`;
+  const m=v.meta;
+  const bot=`<span class="pill ${v.bot_running?'on':'warn'}">bot ${v.bot_running?'online':'idle'}</span>`;
+  const pos=v.positions.length?v.positions.map(p=>`<tr><td>${p.instrument}</td><td>${p.units}</td><td>${p.avgPrice||'—'}</td><td class="${clsPL(p.unrealizedPL)}">${money(p.unrealizedPL)}</td></tr>`).join(''):'<tr><td colspan="4" class="mut">no open positions</td></tr>';
+  const adxCell=r=>r.adx==null?'<span class="mut">—</span>':`<span class="${r.adx>=25?'pos':'mut'}">${r.adx}</span>`;
+  const sigCell=r=>r.vetoed?'<span class="tag none">⊘</span>':sig(r.signal);
+  const mk=v.market.map(r=>`<tr><td>${r.instrument}</td><td>${r.price??'—'}</td><td class="${rsiCls(r.rsi)}">${r.rsi??'—'}</td><td>${adxCell(r)}</td><td>${trend(r.trend)}</td><td>${sigCell(r)}</td></tr>`).join('');
+  const tr=v.trades.length?v.trades.map(t=>`<tr><td>${new Date(t.timestamp).toLocaleTimeString()}</td><td>${t.instrument}</td><td>${esc(t.direction)}</td><td>${t.units}</td><td>${(+t.entry_price).toFixed(5)}</td></tr>`).join(''):'<tr><td colspan="5" class="mut">no trades logged</td></tr>';
+  return `<div class="panel">${head}`+
+    `<div class="foot">${bot} · strategy <b>${esc(v.strategy)}</b> · risk $${m.risk}/trade · SL ${m.sl}/TP ${m.tp} · ${m.pairs} pairs · ${esc(v.env)}</div>`+
+    `<h3 class="foot">Live signals</h3><div class="tblwrap"><table><thead><tr><th>Pair</th><th>Price</th><th>RSI</th><th>ADX</th><th>Trend</th><th>Signal</th></tr></thead><tbody>${mk}</tbody></table></div>`+
+    `<h3 class="foot">Open positions</h3><div class="tblwrap"><table><thead><tr><th>Instrument</th><th>Units</th><th>Avg</th><th>Unreal. P/L</th></tr></thead><tbody>${pos}</tbody></table></div>`+
+    `<h3 class="foot">Recent trades</h3><div class="tblwrap"><table><thead><tr><th>Time</th><th>Instrument</th><th>Dir</th><th>Units</th><th>Entry</th></tr></thead><tbody>${tr}</tbody></table></div>`+
+    `</div>`;
+}
+
+function renderKalshi(v){
+  const head=`<div class="ph"><h2>◈ ${esc(v.label)}</h2>${statusPill(v)}</div>`;
+  if(v.status==='not_configured') return `<div class="panel">${head}<div class="note">${esc(v.reason||'not configured')}</div></div>`;
+  if(v.status==='error') return `<div class="panel">${head}<div class="note">⚠ ${esc(v.error)}</div></div>`;
+  const a=v.account;
+  const pos=v.positions.length?v.positions.map(p=>`<tr><td>${esc(p.ticker)}</td><td>${p.quantity}</td><td>${p.avgPriceCents}¢</td><td>${money(p.exposure)}</td></tr>`).join(''):'<tr><td colspan="4" class="mut">no open positions</td></tr>';
+  return `<div class="panel">${head}<div class="foot">balance <b>${money(a.balance)}</b></div>`+
+    `<h3 class="foot">Open positions</h3><div class="tblwrap"><table><thead><tr><th>Ticker</th><th>Qty</th><th>Avg</th><th>Exposure</th></tr></thead><tbody>${pos}</tbody></table></div></div>`;
 }
 
 function renderProbation(p){
   const el=document.getElementById('probation');
-  if(!el) return;
   if(!p){ el.innerHTML=''; return; }
-  const pct=Math.max(0,Math.min(100, (p.day/p.trial_days)*100));
-  let cls='', vtxt='', vcls='';
-  if(p.verdict==='passed'){ cls='pass'; vtxt='🎓 PASSED'; vcls='passing'; }
-  else if(p.verdict==='failed'){ cls='fail'; vtxt='⛓️ PURGATORY'; vcls='locked'; }
-  else { vtxt = p.passing?'PASSING':'FAILING'; vcls = p.passing?'passing':'failing'; }
-  const pnlCls=p.pnl>0?'pos':p.pnl<0?'neg':'mut';
-  el.innerHTML=
-    `<div class="trial ${cls}">`+
-      `<div class="trial-top"><span class="trial-title">Testing Week</span>`+
-      `<span class="trial-verdict ${vcls}">${vtxt}</span></div>`+
-      `<div class="trial-bar"><i style="width:${pct}%"></i></div>`+
-      `<div class="trial-grid">`+
-        `<div class="k">Day <span class="val">${p.day.toFixed(2)} / ${p.trial_days}</span></div>`+
-        `<div class="k">Net P/L <span class="val ${pnlCls}">${money(p.pnl)}</span></div>`+
-        `<div class="k">Days left <span class="val">${p.days_left.toFixed(2)}</span></div>`+
-        `<div class="k">To pass <span class="val">≥ ${money(p.min_pnl)}</span></div>`+
-        `<div class="k">Trades <span class="val">${p.trades} / ≥${p.min_trades}</span></div>`+
-        `<div class="k">Baseline <span class="val">${money(p.baseline_nav)}</span></div>`+
-      `</div>`+
-    `</div>`;
+  const pct=Math.max(0,Math.min(100,(p.day/p.trial_days)*100));
+  let vtxt,vcls;
+  if(p.verdict==='passed'){ vtxt='◉ PASSED'; vcls='passing'; }
+  else if(p.verdict==='failed'){ vtxt='⛓ PURGATORY'; vcls='locked'; }
+  else { vtxt=p.passing?'PASSING':'FAILING'; vcls=p.passing?'passing':'failing'; }
+  el.innerHTML=`<div class="panel" style="margin-bottom:16px">`+
+    `<div class="trial-top"><h2 style="font-size:11px;letter-spacing:.32em;margin:0;color:var(--cyan)">◇ Testing Week</h2>`+
+    `<span class="trial-verdict ${vcls}">${vtxt}</span></div>`+
+    `<div class="trial-bar"><i style="width:${pct}%"></i></div>`+
+    `<div class="trial-grid">`+
+      `<div class="k">Day <span class="val">${p.day.toFixed(2)} / ${p.trial_days}</span></div>`+
+      `<div class="k">Net P/L <span class="val ${clsPL(p.pnl)}">${money(p.pnl)}</span></div>`+
+      `<div class="k">Days left <span class="val">${p.days_left.toFixed(2)}</span></div>`+
+      `<div class="k">To pass <span class="val">≥ ${money(p.min_pnl)}</span></div>`+
+      `<div class="k">Trades <span class="val">${p.trades} / ≥${p.min_trades}</span></div>`+
+      `<div class="k">Baseline <span class="val">${money(p.baseline_nav)}</span></div>`+
+    `</div></div>`;
 }
 
+/* ---- state ---- */
 async function tick(){
-  let s; try{ s=await (await fetch('/api/state')).json(); }catch(e){ window.__titanLive=false; return; }
-  if(!s.venues){ return; }
+  let s; try{ s=await (await fetch('/api/state')).json(); }catch(e){ window.__live=false; return; }
+  if(!s.venues) return;
+  const o=s.venues.oanda||{}, bots=s.bots||{};
+  window.__bots=bots; window.__live=o.status==='ok';
   document.getElementById('clock').textContent = s.time? new Date(s.time).toLocaleTimeString():'—';
-  document.getElementById('oanda').innerHTML = renderOanda(s.venues.oanda);
-  document.getElementById('kalshi').innerHTML = renderKalshi(s.venues.kalshi);
+  const anyOn=bots.oanda||bots.kalshi;
+  document.getElementById('live-dot').className='live-dot'+(anyOn?'':' off');
+  document.getElementById('live-txt').textContent = o.status==='ok'?(anyOn?'systems online':'standby'):'offline';
+  document.getElementById('core-balance').textContent = o.account?money(o.account.balance,0):'—';
+  document.getElementById('core-status').textContent = o.status==='ok'?(anyOn?'● live':'○ idle'):'awaiting link';
+  renderPods(o);
   renderProbation(s.probation);
-  const o=s.venues.oanda||{};
-  const bots=s.bots||{};
-  window.__bots=bots;
-  window.__titanLive = o.status==='ok';
-  const sub=document.getElementById('globe-sub');
-  if(sub) sub.textContent = o.status==='ok'
-    ? `${(bots.oanda||bots.kalshi)?'● live':'○ idle'} · ${money(o.account?.balance||0,0)}`
-    : (o.status==='not_configured'?'awaiting credentials':'connection error');
+  document.getElementById('oanda').innerHTML = renderOanda(o);
+  document.getElementById('kalshi').innerHTML = renderKalshi(s.venues.kalshi||{});
   [['oanda','Forex Bot'],['kalshi','Kalshi Bot']].forEach(([w,label])=>{
-    const b=document.getElementById('btn-'+w);
-    if(!b || b.disabled) return;
-    const run=!!bots[w];
-    b.textContent=(run?'■ Stop ':'▶ Start ')+label;
-    b.classList.toggle('running', run);
+    const b=document.getElementById('btn-'+w); if(!b||b.disabled)return;
+    const run=!!bots[w]; b.textContent=(run?'■ Stop ':'▶ Start ')+label; b.classList.toggle('on',run);
   });
 }
-
 async function botControl(which){
-  const b=document.getElementById('btn-'+which);
-  const run=(window.__bots||{})[which];
+  const b=document.getElementById('btn-'+which); const run=(window.__bots||{})[which];
   b.disabled=true; b.textContent='…';
   try{ await fetch('/api/bot/'+which+'/'+(run?'stop':'start'),{method:'POST'}); }catch(e){}
-  setTimeout(()=>{ b.disabled=false; tick(); }, 1400);
+  setTimeout(()=>{ b.disabled=false; tick(); },1400);
 }
 
-/* ---- JARVIS hollow wireframe globe (Canvas, self-contained) ---- */
+/* ---- arc-reactor core (Canvas) ---- */
 (function(){
-  const cv=document.getElementById('globe'); if(!cv) return;
+  const cv=document.getElementById('reactor'); if(!cv) return;
   const ctx=cv.getContext('2d');
-  const reduce=window.matchMedia('(prefers-reduced-motion:reduce)').matches;
-  const PAR=8, MER=12, SEG=46, TILT=-0.38;
-  let W=0,H=0,R=0;
-  function resize(){
-    const dpr=Math.min(window.devicePixelRatio||1,2);
-    const size=cv.clientWidth||260;
-    cv.width=size*dpr; cv.height=size*dpr;
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-    W=size; H=size; R=size*0.40;
+  const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
+  let W,H,R;
+  function rs(){const d=Math.min(devicePixelRatio||1,2),s=cv.clientWidth||340;
+    cv.width=s*d;cv.height=s*d;ctx.setTransform(d,0,0,d,0,0);W=s;H=s;R=s*0.46;}
+  rs(); addEventListener('resize',rs);
+  function ring(r,rot,ticks,len,w,a){
+    ctx.save();ctx.translate(W/2,H/2);ctx.rotate(rot);
+    ctx.strokeStyle=`rgba(53,224,255,${a})`;ctx.lineWidth=w;
+    for(let i=0;i<ticks;i++){const ang=i/ticks*Math.PI*2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(ang)*r,Math.sin(ang)*r);
+      ctx.lineTo(Math.cos(ang)*(r-len),Math.sin(ang)*(r-len));
+      ctx.stroke();}
+    ctx.restore();
   }
-  resize(); window.addEventListener('resize',resize);
-  function proj(lat,lon,rot){
-    const cl=Math.cos(lat);
-    let x=cl*Math.sin(lon), y=Math.sin(lat), z=cl*Math.cos(lon);
-    const xr=x*Math.cos(rot)+z*Math.sin(rot), zr=-x*Math.sin(rot)+z*Math.cos(rot);
-    const yt=y*Math.cos(TILT)-zr*Math.sin(TILT), zt=y*Math.sin(TILT)+zr*Math.cos(TILT);
-    return {x:W/2+xr*R, y:H/2+yt*R, z:zt};
-  }
-  function seg(a,b){
-    const z=(a.z+b.z)/2, front=z>0;           // hollow: back lines faint -> see-through
-    ctx.strokeStyle=`rgba(57,255,20,${front?0.55:0.11})`;
-    ctx.lineWidth=front?1.1:0.7;
-    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
-  }
-  let rot=0;
-  function frame(){
+  function circle(r,a,w){ctx.beginPath();ctx.strokeStyle=`rgba(53,224,255,${a})`;ctx.lineWidth=w||1;
+    ctx.arc(W/2,H/2,r,0,7);ctx.stroke();}
+  let t=0;
+  (function frame(){
     ctx.clearRect(0,0,W,H);
-    const live=window.__titanLive;
-    // outer silhouette ring with glow
-    ctx.save();
-    ctx.strokeStyle=`rgba(57,255,20,${live?0.6:0.32})`;
-    ctx.shadowColor='#39ff14'; ctx.shadowBlur=live?20:10; ctx.lineWidth=1.5;
-    ctx.beginPath(); ctx.arc(W/2,H/2,R,0,Math.PI*2); ctx.stroke();
+    const live=window.__live;
+    const gA=live?1:0.5;
+    ctx.save(); ctx.shadowColor='#35e0ff'; ctx.shadowBlur=live?16:7;
+    circle(R,0.55*gA,1.6);
+    circle(R*0.86,0.18*gA,1);
     ctx.restore();
-    // parallels
-    for(let i=1;i<PAR;i++){
-      const lat=-Math.PI/2+i*Math.PI/PAR;
-      for(let s=0;s<SEG;s++)
-        seg(proj(lat,s/SEG*2*Math.PI,rot), proj(lat,(s+1)/SEG*2*Math.PI,rot));
-    }
-    // meridians (pole-to-pole half circles around the sphere)
-    for(let j=0;j<MER;j++){
-      const lon=j*2*Math.PI/MER;
-      for(let s=0;s<SEG;s++){
-        const l1=-Math.PI/2+s/SEG*Math.PI, l2=-Math.PI/2+(s+1)/SEG*Math.PI;
-        seg(proj(l1,lon,rot), proj(l2,lon,rot));
-      }
-    }
-    // core glow
-    ctx.save();
-    const g=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,R*0.5);
-    g.addColorStop(0,`rgba(57,255,20,${live?0.16:0.07})`); g.addColorStop(1,'rgba(57,255,20,0)');
-    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(W/2,H/2,R*0.5,0,Math.PI*2); ctx.fill();
+    // outer tick ring (slow CW)
+    ring(R*0.99, t*0.15, 90, 8, 1, 0.35*gA);
+    // mid heavy ticks (CCW)
+    ring(R*0.80, -t*0.35, 36, 16, 2, 0.55*gA);
+    // inner fine ring (CW faster)
+    ring(R*0.62, t*0.7, 120, 5, 1, 0.28*gA);
+    circle(R*0.52,0.4*gA,1);
+    // segmented inner arc
+    ctx.save();ctx.translate(W/2,H/2);ctx.rotate(-t*0.5);
+    ctx.strokeStyle=`rgba(53,224,255,${0.8*gA})`;ctx.lineWidth=3;ctx.shadowColor='#35e0ff';ctx.shadowBlur=12;
+    for(let k=0;k<6;k++){const a0=k/6*Math.PI*2, a1=a0+0.7;
+      ctx.beginPath();ctx.arc(0,0,R*0.44,a0,a1);ctx.stroke();}
     ctx.restore();
-    rot += reduce?0:(live?0.006:0.0028);
+    // core glow + pulse
+    const pulse=reduce?0.5:(0.5+0.5*Math.sin(t*2));
+    const g=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,R*0.4);
+    g.addColorStop(0,`rgba(180,245,255,${(0.35+0.35*pulse)*gA})`);
+    g.addColorStop(0.4,`rgba(53,224,255,${0.22*gA})`);
+    g.addColorStop(1,'rgba(53,224,255,0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(W/2,H/2,R*0.4,0,7);ctx.fill();
+    // core disc
+    ctx.save();ctx.shadowColor='#9fe9ff';ctx.shadowBlur=live?26:12;
+    ctx.fillStyle=`rgba(200,248,255,${(0.5+0.3*pulse)*gA})`;
+    ctx.beginPath();ctx.arc(W/2,H/2,R*0.12,0,7);ctx.fill();ctx.restore();
+    if(!reduce) t+=0.01;
     requestAnimationFrame(frame);
-  }
-  frame();
+  })();
 })();
 
-tick(); setInterval(tick, 3000);
+tick(); setInterval(tick,3000);
 </script>
 </body></html>"""
 
