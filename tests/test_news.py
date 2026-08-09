@@ -101,3 +101,30 @@ def test_news_veto_expired_event_does_not_block(tmp_path, monkeypatch):
 def test_news_veto_no_feed_never_blocks(tmp_path, monkeypatch):
     monkeypatch.setattr(ot.Config, "LOG_DIR", tmp_path)
     assert ot.news_veto("EUR_USD") is None
+
+
+def test_leader_feed_flags_and_boosts_impact():
+    # A leader-source post with plain text -> leader=True and never "low".
+    xml = """<?xml version="1.0"?><rss><channel>
+      <item><title>[No Title] - Post from Jan 1</title>
+        <description><![CDATA[<p>Great meeting today, tremendous success!</p>]]></description>
+        <link>http://t/1</link><pubDate>Mon, 04 Aug 2026 12:00:00 +0000</pubDate></item>
+      <item><title>[No Title] - Post from Jan 1</title>
+        <description><![CDATA[<p></p>]]></description><link>http://t/2</link></item>
+    </channel></rss>"""
+    heads = news.parse_rss(xml, "Trump · Truth Social")
+    assert len(heads) == 1                 # empty repost skipped
+    assert heads[0].leader is True
+    assert heads[0].impact in ("medium", "high")
+    assert "meeting" in heads[0].title.lower()
+
+
+def test_leader_mention_in_normal_feed():
+    xml = """<?xml version="1.0"?><rss><channel>
+      <item><title>Trump announces new tariffs on China imports</title><link>http://x/1</link></item>
+      <item><title>Local bakery wins award</title><link>http://x/2</link></item>
+    </channel></rss>"""
+    heads = news.parse_rss(xml, "BBC World")
+    by = {h.title: h for h in heads}
+    assert by["Trump announces new tariffs on China imports"].leader is True
+    assert by["Local bakery wins award"].leader is False

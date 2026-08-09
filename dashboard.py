@@ -536,7 +536,8 @@ function renderNews(n){
     const ccy=(h.currencies||[]).join(' ')||'—';
     const t=esc(h.title||'');
     const title=h.link?`<a href="${esc(h.link)}" target="_blank" rel="noopener" style="color:var(--fg);text-decoration:none">${t}</a>`:t;
-    return `<tr><td>${imp}</td><td style="text-align:left;white-space:normal">${title}</td><td class="mut">${esc(h.source||'')}</td><td class="mut">${ccy}</td></tr>`;
+    const flag=h.leader?'<span class="tag" style="background:rgba(255,225,77,.18);color:var(--amber);margin-right:6px">◤ LEADER</span>':'';
+    return `<tr><td>${imp}</td><td style="text-align:left;white-space:normal">${flag}${title}</td><td class="mut">${esc(h.source||'')}</td><td class="mut">${ccy}</td></tr>`;
   }).join('') || '<tr><td colspan="4" class="mut">awaiting first scan…</td></tr>';
   const srcRows=(n.sources||[]).map(sc=>
     `<tr><td style="text-align:left"><a href="${esc(sc.url)}" target="_blank" rel="noopener" style="color:var(--cyan);text-decoration:none">${esc(sc.name)}</a></td>`+

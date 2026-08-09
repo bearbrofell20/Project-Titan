@@ -29,7 +29,16 @@ FEEDS = [
     ("BBC Business", "https://feeds.bbci.co.uk/news/business/rss.xml"),
     ("Yahoo Finance", "https://finance.yahoo.com/news/rssindex"),
     ("CNBC", "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114"),
+    # World-leader direct posts (Trump's Truth Social, via a public mirror).
+    ("Trump · Truth Social", "https://trumpstruth.org/feed"),
 ]
+
+# Sources whose items are a world leader's own words -> always leader-flagged and
+# treated as at least medium impact (their posts move markets on their own).
+LEADER_SOURCES = {"Trump · Truth Social"}
+# Leaders/officials to flag when merely *mentioned* in a normal news headline.
+LEADER_KEYS = ["trump", "putin", "xi jinping", "zelensky", "powell",
+               "netanyahu", "erdogan", "modi", "president"]
 
 # --- keyword lexicons ------------------------------------------------------
 # High-impact, market-moving themes (geopolitics + macro policy + shocks).
@@ -76,6 +85,11 @@ class Headline:
     impact: str = "low"     # high | medium | low
     posture: str = "neutral"  # risk_off | risk_on | neutral
     currencies: List[str] = field(default_factory=list)
+    leader: bool = False    # a world leader's own post, or a headline about one
+
+
+def _strip_html(s: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", s or "")).strip()
 
 
 def _has(text: str, words) -> bool:
@@ -115,18 +129,32 @@ def parse_rss(xml_text: str, source: str) -> List[Headline]:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
         return out
+    is_leader_src = source in LEADER_SOURCES
     for item in root.iter("item"):
         title = (item.findtext("title") or "").strip()
-        if not title:
-            continue
+        body = _strip_html(item.findtext("description") or "")
+        # For leader post feeds the real content is the body; the title is a
+        # placeholder like "[No Title] - Post from ...". Prefer the body there.
+        if is_leader_src or title.startswith("[No Title]") or not title:
+            text = body or (title if not title.startswith("[No Title]") else "")
+        else:
+            text = title
+        text = text.strip()
+        if not text:
+            continue  # empty repost / media-only — nothing to classify
         link = (item.findtext("link") or "").strip()
         pub = (item.findtext("pubDate") or "").strip()
         ts = _parse_pubdate(pub)
-        c = classify(title)
+        c = classify(text)
+        leader = is_leader_src or _has(" " + text.lower() + " ", LEADER_KEYS)
+        impact = c["impact"]
+        if is_leader_src and impact == "low":
+            impact = "medium"  # a leader's own words are never "low" signal
         out.append(Headline(
-            source=source, title=title, link=link,
+            source=source, title=text[:200], link=link,
             published=(datetime.fromtimestamp(ts, timezone.utc).isoformat() if ts else pub),
-            ts=ts, impact=c["impact"], posture=c["posture"], currencies=c["currencies"],
+            ts=ts, impact=impact, posture=c["posture"], currencies=c["currencies"],
+            leader=leader,
         ))
     return out
 
