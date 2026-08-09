@@ -188,10 +188,16 @@ class NewsScanner:
         heads = self.fetch()
         agg = aggregate_posture(heads)
         top = heads[: self.keep]
+        counts: Dict[str, int] = {}
+        for h in heads:
+            counts[h.source] = counts.get(h.source, 0) + 1
+        sources = [{"name": name, "url": url, "count": counts.get(name, 0)}
+                   for name, url in self.feeds]
         return {
             "updated": datetime.now(timezone.utc).isoformat(),
             "count": len(heads),
             "risk": agg,
+            "sources": sources,
             "headlines": [asdict(h) for h in top],
         }
 

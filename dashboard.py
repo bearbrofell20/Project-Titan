@@ -214,6 +214,7 @@ def _news_feed() -> dict | None:
         return {
             "updated": feed.get("updated"),
             "risk": feed.get("risk", {}),
+            "sources": feed.get("sources", []),
             "headlines": feed.get("headlines", [])[:8],
         }
     except Exception:
@@ -514,6 +515,11 @@ function renderProbation(p){
     `</div></div>`;
 }
 
+function toggleSources(){
+  window.__srcOpen=!window.__srcOpen;
+  const e=document.getElementById('srclist'); if(e) e.hidden=!window.__srcOpen;
+  const b=document.getElementById('srcbtn'); if(b) b.classList.toggle('on',window.__srcOpen);
+}
 function renderNews(n){
   const el=document.getElementById('intel');
   if(!el) return;
@@ -532,9 +538,17 @@ function renderNews(n){
     const title=h.link?`<a href="${esc(h.link)}" target="_blank" rel="noopener" style="color:var(--fg);text-decoration:none">${t}</a>`:t;
     return `<tr><td>${imp}</td><td style="text-align:left;white-space:normal">${title}</td><td class="mut">${esc(h.source||'')}</td><td class="mut">${ccy}</td></tr>`;
   }).join('') || '<tr><td colspan="4" class="mut">awaiting first scan…</td></tr>';
+  const srcRows=(n.sources||[]).map(sc=>
+    `<tr><td style="text-align:left"><a href="${esc(sc.url)}" target="_blank" rel="noopener" style="color:var(--cyan);text-decoration:none">${esc(sc.name)}</a></td>`+
+    `<td class="mut" style="text-align:left;white-space:normal">${esc(sc.url)}</td><td>${sc.count}</td></tr>`
+  ).join('') || '<tr><td colspan="3" class="mut">—</td></tr>';
   el.innerHTML=`<div class="panel" style="margin-bottom:16px"><div class="ph"><h2>◎ World Intel</h2>`+
-    `<span class="pill" style="color:${col};border-color:${col}">${lvl.toUpperCase()} · ${(r.posture||'neutral').replace('_','-')}</span></div>`+
-    `<div class="tblwrap"><table><thead><tr><th>Impact</th><th>Headline</th><th>Source</th><th>FX</th></tr></thead><tbody>${rows}</tbody></table></div>`+
+    `<span class="pill" style="color:${col};border-color:${col}">${lvl.toUpperCase()} · ${(r.posture||'neutral').replace('_','-')}</span>`+
+    `<span class="spacer" style="flex:1"></span>`+
+    `<button id="srcbtn" class="btn ${window.__srcOpen?'on':''}" style="padding:5px 14px;font-size:10px;margin:0" onclick="toggleSources()">⛁ Sources · ${(n.sources||[]).length}</button></div>`+
+    `<div id="srclist" ${window.__srcOpen?'':'hidden'}><div class="tblwrap"><table><thead><tr><th>Source</th><th>Feed</th><th># now</th></tr></thead><tbody>${srcRows}</tbody></table></div>`+
+    `<div class="foot">These are every feed the intel is scanned from, refreshed each pass.</div></div>`+
+    `<div class="tblwrap" style="margin-top:12px"><table><thead><tr><th>Impact</th><th>Headline</th><th>Source</th><th>FX</th></tr></thead><tbody>${rows}</tbody></table></div>`+
     `<div class="foot">updated ${n.updated?new Date(n.updated).toLocaleTimeString():'—'} · scans every 30 min · defensive risk filter</div></div>`;
 }
 
