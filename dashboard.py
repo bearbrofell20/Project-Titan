@@ -204,12 +204,29 @@ def _probation_standing() -> dict | None:
         return None
 
 
+def _news_feed() -> dict | None:
+    """Latest classified news (from news_bot.py), trimmed for the dashboard."""
+    try:
+        import news
+        feed = news.load_feed(Config.LOG_DIR / "news_feed.json")
+        if not feed:
+            return None
+        return {
+            "updated": feed.get("updated"),
+            "risk": feed.get("risk", {}),
+            "headlines": feed.get("headlines", [])[:8],
+        }
+    except Exception:
+        return None
+
+
 def build_state(oanda_client, kalshi_client) -> dict:
     return {
         "status": "ok",
         "time": datetime.now(timezone.utc).isoformat(),
         "bots": {"oanda": bot_proc_running("oanda"), "kalshi": bot_proc_running("kalshi")},
         "probation": _probation_standing(),
+        "news": _news_feed(),
         "venues": {
             "oanda": build_oanda_venue(oanda_client),
             "kalshi": build_kalshi_venue(kalshi_client),
@@ -405,6 +422,7 @@ INDEX_HTML = """<!doctype html>
 <div class="wrap">
   <div class="pods" id="pods"></div>
   <div id="probation"></div>
+  <section id="intel"></section>
   <section id="oanda"></section>
   <section id="kalshi"></section>
 </div>
@@ -496,6 +514,30 @@ function renderProbation(p){
     `</div></div>`;
 }
 
+function renderNews(n){
+  const el=document.getElementById('intel');
+  if(!el) return;
+  if(!n){ el.innerHTML=''; return; }
+  const r=n.risk||{};
+  const lvl=(r.level||'calm');
+  const col = lvl==='high'?'var(--red)':lvl==='elevated'?'var(--amber)':'var(--green)';
+  const rows=(n.headlines||[]).map(h=>{
+    const imp = h.impact==='high'
+      ? '<span class="tag sell">HIGH</span>'
+      : h.impact==='medium'
+        ? '<span class="tag" style="background:rgba(255,225,77,.16);color:var(--amber)">MED</span>'
+        : '<span class="tag none">low</span>';
+    const ccy=(h.currencies||[]).join(' ')||'—';
+    const t=esc(h.title||'');
+    const title=h.link?`<a href="${esc(h.link)}" target="_blank" rel="noopener" style="color:var(--fg);text-decoration:none">${t}</a>`:t;
+    return `<tr><td>${imp}</td><td style="text-align:left;white-space:normal">${title}</td><td class="mut">${esc(h.source||'')}</td><td class="mut">${ccy}</td></tr>`;
+  }).join('') || '<tr><td colspan="4" class="mut">awaiting first scan…</td></tr>';
+  el.innerHTML=`<div class="panel" style="margin-bottom:16px"><div class="ph"><h2>◎ World Intel</h2>`+
+    `<span class="pill" style="color:${col};border-color:${col}">${lvl.toUpperCase()} · ${(r.posture||'neutral').replace('_','-')}</span></div>`+
+    `<div class="tblwrap"><table><thead><tr><th>Impact</th><th>Headline</th><th>Source</th><th>FX</th></tr></thead><tbody>${rows}</tbody></table></div>`+
+    `<div class="foot">updated ${n.updated?new Date(n.updated).toLocaleTimeString():'—'} · scans every 30 min · defensive risk filter</div></div>`;
+}
+
 /* ---- state ---- */
 async function tick(){
   let s; try{ s=await (await fetch('/api/state')).json(); }catch(e){ window.__live=false; return; }
@@ -510,6 +552,7 @@ async function tick(){
   document.getElementById('core-status').textContent = o.status==='ok'?(anyOn?'● live':'○ idle'):'awaiting link';
   renderPods(o);
   renderProbation(s.probation);
+  renderNews(s.news);
   document.getElementById('oanda').innerHTML = renderOanda(o);
   document.getElementById('kalshi').innerHTML = renderKalshi(s.venues.kalshi||{});
   [['oanda','Forex Bot'],['kalshi','Kalshi Bot']].forEach(([w,label])=>{

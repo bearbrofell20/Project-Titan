@@ -143,6 +143,13 @@ class Config:
     HTF_GRANULARITY = os.getenv("OANDA_HTF_GRANULARITY", "H1")
     HTF_EMA_PERIOD = _env_int("OANDA_HTF_EMA", 100)
 
+    # News event-risk veto: when the news bot (news_bot.py) flags a HIGH-impact
+    # story touching a pair's currencies within the last NEWS_VETO_MINUTES, skip
+    # new entries on that pair. Defensive only (avoid trading into news spikes);
+    # off by default until validated.
+    NEWS_VETO = _env_bool("OANDA_NEWS_VETO", False)
+    NEWS_VETO_MINUTES = _env_int("OANDA_NEWS_VETO_MINUTES", 30)
+
     # Breakout strategy ------------------------------------------------------
     BREAKOUT_LOOKBACK = _env_int("OANDA_BREAKOUT_LOOKBACK", 20)
 
@@ -922,6 +929,33 @@ STRATEGIES = {
 }
 
 
+def news_veto(instrument, now=None):
+    """Return a reason string if a HIGH-impact news event recently hit either of
+    this pair's currencies, else None. Reads the news bot's shared feed.
+    """
+    import time as _t
+    now = now if now is not None else _t.time()
+    feed_path = Config.LOG_DIR / "news_feed.json"
+    try:
+        with open(feed_path) as fh:
+            feed = json.load(fh)
+    except Exception:
+        return None  # no feed yet -> never blocks
+    pair_ccy = set(instrument.split("_"))
+    window = Config.NEWS_VETO_MINUTES * 60
+    for h in feed.get("headlines", []):
+        if h.get("impact") != "high":
+            continue
+        ts = h.get("ts") or 0
+        if ts and (now - ts) > window:
+            continue
+        if ts == 0:
+            continue  # unknown time -> don't block on it
+        if pair_ccy & set(h.get("currencies", [])):
+            return f"news:{','.join(sorted(pair_ccy & set(h['currencies'])))} — {h.get('title','')[:60]}"
+    return None
+
+
 def gate_signal(sig, candles, instrument, htf_bias=None):
     """Apply the trend gates to a raw entry signal (shared by live + backtest).
 
@@ -1229,6 +1263,13 @@ class OandaBot:
             signal = signal_for(candles, instrument, htf_bias=htf_bias)
             if not signal:
                 return
+
+            # News event-risk veto: stand aside around high-impact headlines.
+            if Config.NEWS_VETO:
+                reason = news_veto(instrument)
+                if reason:
+                    logger.info(f"📰 NEWS VETO {signal} {instrument}: {reason}")
+                    return
 
             # Analyzer bot: vet the trade against real market conditions.
             if Config.ANALYZER:

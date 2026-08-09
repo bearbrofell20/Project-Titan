@@ -57,8 +57,20 @@ def _run_kalshi():
         print(f"[kalshi] stopped: {e}")
 
 
+def _run_news():
+    """Scan world/market news every 30 min (on by default; NEWS_ENABLE=false to skip)."""
+    if os.getenv("NEWS_ENABLE", "true").strip().lower() in {"0", "false", "no", "off"}:
+        return
+    try:
+        import news_bot
+        news_bot.main()
+    except Exception as e:
+        print(f"[news] stopped: {e}")
+
+
 def main():
     threading.Thread(target=_serve_dashboard, daemon=True).start()
+    threading.Thread(target=_run_news, daemon=True).start()
     if _enabled("KALSHI_ENABLE"):
         threading.Thread(target=_run_kalshi, daemon=True).start()
     # OANDA bot blocks in the trading loop until Ctrl-C / kill switch.
