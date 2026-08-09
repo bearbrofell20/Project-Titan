@@ -258,22 +258,22 @@ INDEX_HTML = """<!doctype html>
 <style>
   /* JARVIS HUD — committed single-theme dark control surface. */
   :root{
-    --bg:#02060a; --bg2:#030b12; --panel:rgba(8,20,30,.72); --line:rgba(53,224,255,.16);
-    --cyan:#35e0ff; --cyan-soft:rgba(53,224,255,.62); --cyan-dim:rgba(53,224,255,.28);
-    --amber:#ffb43a; --green:#33ff9e; --red:#ff5c6a; --fg:#c7ecf6; --mut:#5f8496;
-    --glow:0 0 18px rgba(53,224,255,.45);
+    --bg:#02060a; --bg2:#030b12; --panel:rgba(8,26,14,.72); --line:rgba(57,255,20,.16);
+    --cyan:#39ff14; --cyan-soft:rgba(57,255,20,.62); --cyan-dim:rgba(57,255,20,.28);
+    --amber:#ffe14d; --green:#33ff9e; --red:#ff5c6a; --fg:#cdefd1; --mut:#5f8496;
+    --glow:0 0 18px rgba(57,255,20,.45);
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
   body{background:
-      radial-gradient(1200px 700px at 50% -10%, #06202e 0%, rgba(2,6,10,0) 60%),
-      repeating-linear-gradient(0deg, rgba(53,224,255,.035) 0 1px, transparent 1px 3px),
+      radial-gradient(1200px 700px at 50% -10%, #04160a 0%, rgba(2,6,10,0) 60%),
+      repeating-linear-gradient(0deg, rgba(57,255,20,.035) 0 1px, transparent 1px 3px),
       var(--bg);
     color:var(--fg); font:13px/1.5 ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
     letter-spacing:.02em; overflow-x:hidden;}
   /* faint moving scanline */
   body::after{content:"";position:fixed;left:0;right:0;height:120px;pointer-events:none;z-index:60;
-    background:linear-gradient(180deg,rgba(53,224,255,0),rgba(53,224,255,.06),rgba(53,224,255,0));
+    background:linear-gradient(180deg,rgba(57,255,20,0),rgba(57,255,20,.06),rgba(57,255,20,0));
     animation:scan 7s linear infinite;}
   @keyframes scan{0%{top:-120px}100%{top:100%}}
   @media (prefers-reduced-motion:reduce){body::after{animation:none;display:none}}
@@ -304,14 +304,14 @@ INDEX_HTML = """<!doctype html>
   #reactor{width:340px;height:340px;max-width:78vw;max-height:78vw;display:block}
   .core-read{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none}
   .core-read .lbl{font-size:9px;letter-spacing:.5em;color:var(--cyan-soft);text-transform:uppercase}
-  .core-read .big{font-size:26px;font-weight:700;color:#eafaff;text-shadow:var(--glow);margin-top:4px;
+  .core-read .big{font-size:26px;font-weight:700;color:#eaffea;text-shadow:var(--glow);margin-top:4px;
     font-variant-numeric:tabular-nums}
   .core-read .sub{font-size:10px;letter-spacing:.24em;color:var(--mut);margin-top:4px;text-transform:uppercase}
   .ctl{display:flex;gap:12px;margin-top:14px;flex-wrap:wrap;justify-content:center}
   .btn{font:inherit;font-size:11px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer;
-    padding:9px 22px;background:rgba(53,224,255,.06);border:1px solid var(--cyan-dim);color:var(--cyan);
+    padding:9px 22px;background:rgba(57,255,20,.06);border:1px solid var(--cyan-dim);color:var(--cyan);
     clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);transition:.15s}
-  .btn:hover{background:rgba(53,224,255,.16);box-shadow:var(--glow)}
+  .btn:hover{background:rgba(57,255,20,.16);box-shadow:var(--glow)}
   .btn.on{background:rgba(51,255,158,.14);border-color:var(--green);color:var(--green);
     box-shadow:0 0 16px rgba(51,255,158,.4);font-weight:700}
   .btn:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}
@@ -320,16 +320,16 @@ INDEX_HTML = """<!doctype html>
   .pods{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:14px;margin:26px 0 6px}
   .pod{position:relative;aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
     border-radius:50%;text-align:center;
-    background:radial-gradient(circle at 50% 50%, rgba(53,224,255,.05), rgba(2,6,10,0) 70%);}
+    background:radial-gradient(circle at 50% 50%, rgba(57,255,20,.05), rgba(2,6,10,0) 70%);}
   .pod::before{content:"";position:absolute;inset:0;border-radius:50%;
-    background:var(--ring, conic-gradient(var(--cyan) 0deg, rgba(53,224,255,.10) 0deg));
+    background:var(--ring, conic-gradient(var(--cyan) 0deg, rgba(57,255,20,.10) 0deg));
     -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 6px),#000 calc(100% - 6px));
             mask:radial-gradient(farthest-side,transparent calc(100% - 6px),#000 calc(100% - 6px));
-    filter:drop-shadow(0 0 6px rgba(53,224,255,.5));}
+    filter:drop-shadow(0 0 6px rgba(57,255,20,.5));}
   .pod::after{content:"";position:absolute;inset:9px;border-radius:50%;border:1px solid var(--line)}
   .pod .k{font-size:8.5px;letter-spacing:.22em;color:var(--mut);text-transform:uppercase;z-index:1}
-  .pod .v{font-size:18px;font-weight:700;color:#eafaff;z-index:1;margin-top:3px;font-variant-numeric:tabular-nums;
-    text-shadow:0 0 12px rgba(53,224,255,.35)}
+  .pod .v{font-size:18px;font-weight:700;color:#eaffea;z-index:1;margin-top:3px;font-variant-numeric:tabular-nums;
+    text-shadow:0 0 12px rgba(57,255,20,.35)}
   .pod .v.pos{color:var(--green);text-shadow:0 0 12px rgba(51,255,158,.4)}
   .pod .v.neg{color:var(--red);text-shadow:0 0 12px rgba(255,92,106,.4)}
 
@@ -345,16 +345,16 @@ INDEX_HTML = """<!doctype html>
   .ph h2{font-size:11px;margin:0;letter-spacing:.32em;text-transform:uppercase;color:var(--cyan);font-weight:700}
   .ph .pill{font-size:9px;letter-spacing:.2em;padding:2px 8px;border:1px solid var(--line);border-radius:2px;color:var(--mut);text-transform:uppercase}
   .ph .pill.on{color:var(--cyan);border-color:var(--cyan-dim)}
-  .ph .pill.demo{color:var(--amber);border-color:rgba(255,180,58,.4)}
-  .ph .pill.warn{color:var(--amber);border-color:rgba(255,180,58,.4)}
+  .ph .pill.demo{color:var(--amber);border-color:rgba(255,225,77,.4)}
+  .ph .pill.warn{color:var(--amber);border-color:rgba(255,225,77,.4)}
   .foot{color:var(--mut);font-size:10px;letter-spacing:.08em;margin-top:10px;text-transform:uppercase}
   .foot b{color:var(--cyan-soft)}
   .tblwrap{overflow-x:auto}
   table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
-  th,td{text-align:right;padding:7px 10px;border-bottom:1px solid rgba(53,224,255,.08);white-space:nowrap}
+  th,td{text-align:right;padding:7px 10px;border-bottom:1px solid rgba(57,255,20,.08);white-space:nowrap}
   th:first-child,td:first-child{text-align:left}
   th{font-size:9px;text-transform:uppercase;letter-spacing:.18em;color:var(--mut);font-weight:600}
-  tbody tr:hover{background:rgba(53,224,255,.05)}
+  tbody tr:hover{background:rgba(57,255,20,.05)}
   tr:last-child td{border-bottom:none}
   .pos{color:var(--green)} .neg{color:var(--red)} .mut{color:var(--mut)}
   .up{color:var(--green)} .down{color:var(--red)}
@@ -371,12 +371,12 @@ INDEX_HTML = """<!doctype html>
   .trial-verdict{font-size:11px;font-weight:700;letter-spacing:.14em}
   .trial-verdict.passing{color:var(--green)} .trial-verdict.failing{color:var(--amber)}
   .trial-verdict.locked{color:var(--red)}
-  .trial-bar{height:6px;background:rgba(53,224,255,.08);border:1px solid var(--line);overflow:hidden}
+  .trial-bar{height:6px;background:rgba(57,255,20,.08);border:1px solid var(--line);overflow:hidden}
   .trial-bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--cyan-dim),var(--cyan));
     box-shadow:var(--glow);transition:width .5s}
   .trial-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px 20px;margin-top:12px;font-size:11px}
   .trial-grid .k{color:var(--mut);text-transform:uppercase;letter-spacing:.12em;font-size:10px}
-  .trial-grid .val{float:right;color:#eafaff;font-variant-numeric:tabular-nums}
+  .trial-grid .val{float:right;color:#eaffea;font-variant-numeric:tabular-nums}
 </style></head>
 <body>
 <div class="bracket tl"></div><div class="bracket tr"></div>
@@ -419,8 +419,8 @@ function sig(s){if(s==='BUY')return'<span class="tag buy">BUY</span>';if(s==='SE
 
 function pod(k,val,{cls='',pct=null}={}){
   const ring = pct==null
-    ? 'conic-gradient(rgba(53,224,255,.25) 0deg, rgba(53,224,255,.08) 0deg)'
-    : `conic-gradient(var(--cyan) ${Math.max(0,Math.min(100,pct))*3.6}deg, rgba(53,224,255,.08) 0deg)`;
+    ? 'conic-gradient(rgba(57,255,20,.25) 0deg, rgba(57,255,20,.08) 0deg)'
+    : `conic-gradient(var(--cyan) ${Math.max(0,Math.min(100,pct))*3.6}deg, rgba(57,255,20,.08) 0deg)`;
   return `<div class="pod" style="--ring:${ring}"><div class="k">${k}</div><div class="v ${cls}">${val}</div></div>`;
 }
 
@@ -535,7 +535,7 @@ async function botControl(which){
   rs(); addEventListener('resize',rs);
   function ring(r,rot,ticks,len,w,a){
     ctx.save();ctx.translate(W/2,H/2);ctx.rotate(rot);
-    ctx.strokeStyle=`rgba(53,224,255,${a})`;ctx.lineWidth=w;
+    ctx.strokeStyle=`rgba(57,255,20,${a})`;ctx.lineWidth=w;
     for(let i=0;i<ticks;i++){const ang=i/ticks*Math.PI*2;
       ctx.beginPath();
       ctx.moveTo(Math.cos(ang)*r,Math.sin(ang)*r);
@@ -543,14 +543,14 @@ async function botControl(which){
       ctx.stroke();}
     ctx.restore();
   }
-  function circle(r,a,w){ctx.beginPath();ctx.strokeStyle=`rgba(53,224,255,${a})`;ctx.lineWidth=w||1;
+  function circle(r,a,w){ctx.beginPath();ctx.strokeStyle=`rgba(57,255,20,${a})`;ctx.lineWidth=w||1;
     ctx.arc(W/2,H/2,r,0,7);ctx.stroke();}
   let t=0;
   (function frame(){
     ctx.clearRect(0,0,W,H);
     const live=window.__live;
     const gA=live?1:0.5;
-    ctx.save(); ctx.shadowColor='#35e0ff'; ctx.shadowBlur=live?16:7;
+    ctx.save(); ctx.shadowColor='#39ff14'; ctx.shadowBlur=live?16:7;
     circle(R,0.55*gA,1.6);
     circle(R*0.86,0.18*gA,1);
     ctx.restore();
@@ -563,20 +563,20 @@ async function botControl(which){
     circle(R*0.52,0.4*gA,1);
     // segmented inner arc
     ctx.save();ctx.translate(W/2,H/2);ctx.rotate(-t*0.5);
-    ctx.strokeStyle=`rgba(53,224,255,${0.8*gA})`;ctx.lineWidth=3;ctx.shadowColor='#35e0ff';ctx.shadowBlur=12;
+    ctx.strokeStyle=`rgba(255,225,77,${0.85*gA})`;ctx.lineWidth=3;ctx.shadowColor='#ffe14d';ctx.shadowBlur=12;
     for(let k=0;k<6;k++){const a0=k/6*Math.PI*2, a1=a0+0.7;
       ctx.beginPath();ctx.arc(0,0,R*0.44,a0,a1);ctx.stroke();}
     ctx.restore();
     // core glow + pulse
     const pulse=reduce?0.5:(0.5+0.5*Math.sin(t*2));
     const g=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,R*0.4);
-    g.addColorStop(0,`rgba(180,245,255,${(0.35+0.35*pulse)*gA})`);
-    g.addColorStop(0.4,`rgba(53,224,255,${0.22*gA})`);
-    g.addColorStop(1,'rgba(53,224,255,0)');
+    g.addColorStop(0,`rgba(200,255,190,${(0.35+0.35*pulse)*gA})`);
+    g.addColorStop(0.4,`rgba(57,255,20,${0.22*gA})`);
+    g.addColorStop(1,'rgba(57,255,20,0)');
     ctx.fillStyle=g;ctx.beginPath();ctx.arc(W/2,H/2,R*0.4,0,7);ctx.fill();
     // core disc
     ctx.save();ctx.shadowColor='#9fe9ff';ctx.shadowBlur=live?26:12;
-    ctx.fillStyle=`rgba(200,248,255,${(0.5+0.3*pulse)*gA})`;
+    ctx.fillStyle=`rgba(210,255,200,${(0.5+0.3*pulse)*gA})`;
     ctx.beginPath();ctx.arc(W/2,H/2,R*0.12,0,7);ctx.fill();ctx.restore();
     if(!reduce) t+=0.01;
     requestAnimationFrame(frame);
