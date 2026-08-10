@@ -40,6 +40,10 @@ def precompute(strategy: str, candles, trend_filter: bool = True, **kw):
         return fast.opening_range_breakout_signals(
             candles, kw.get("open_hour", 7), kw.get("range_bars", 4),
             kw.get("window_end_hour", 11))
+    if strategy == "macd":
+        return fast.macd_cross_signals(candles)
+    if strategy == "ribbon":
+        return fast.ma_ribbon_signals(candles)
     raise ValueError(f"no fast precompute for {strategy!r}")
 
 

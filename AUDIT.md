@@ -83,3 +83,20 @@ sweep such strategies is data-snooping, not progress. A real edge must come from
 a *different, tested* source (a calibrated predictive feature, a cross-asset or
 event signal, or a structural/execution advantage) — evaluated on this same
 harness with the same all/OOS/holdout + walk-forward discipline.
+
+## Update — the "standard playbook" (Sarwa article) tested
+
+Tested the two ideas from a solid day-trading overview (sarwa.co) not already in
+the harness, on the same 6-major real-bid/ask data:
+
+| Strategy | Result (net of costs) |
+|---|---|
+| MACD(12,26,9) crossover, M5/M15 | −0.06 to −0.10R, negative out-of-sample |
+| 5/8/13 EMA-ribbon scalping | −0.11 to −0.22R; worse the more it trades |
+
+Both fail across splits — no robust positive expectancy. Combined with the
+earlier sweep, **every strategy in the standard retail playbook** (trend, range,
+momentum, breakout, pullback, MACD, MA-ribbon scalping) has now been tested on
+major FX net of realistic costs and **none shows an edge**. The high-frequency
+ribbon was the worst, confirming that trade frequency mostly buys spread cost.
+Edge, if it exists for us, is not in the standard technical playbook.

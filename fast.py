@@ -128,6 +128,42 @@ def opening_range_breakout_signals(
     return out
 
 
+def macd_cross_signals(candles: List[dict], fast: int = 12, slow: int = 26, sig: int = 9) -> List[Optional[str]]:
+    """MACD(12,26,9): BUY when the MACD line crosses above its signal line,
+    SELL when it crosses below. (Sarwa 'trend trading' via MACD.)"""
+    closes = [_ohlc(c)[3] for c in candles]
+    ef, es = ema_series(closes, fast), ema_series(closes, slow)
+    macd = [ef[i] - es[i] for i in range(len(closes))]
+    signal = ema_series(macd, sig)
+    out: List[Optional[str]] = [None] * len(candles)
+    for i in range(slow + sig, len(candles)):
+        prev, now = macd[i - 1] - signal[i - 1], macd[i] - signal[i]
+        if prev <= 0 and now > 0:
+            out[i] = "BUY"
+        elif prev >= 0 and now < 0:
+            out[i] = "SELL"
+    return out
+
+
+def ma_ribbon_signals(candles: List[dict], a: int = 5, b: int = 8, c: int = 13) -> List[Optional[str]]:
+    """5/8/13 EMA ribbon (Sarwa 'scalping'): BUY the bar the ribbon lines up
+    bullish (a>b>c) after not being, SELL when it lines up bearish (a<b<c)."""
+    closes = [_ohlc(x)[3] for x in candles]
+    ea, eb, ec = ema_series(closes, a), ema_series(closes, b), ema_series(closes, c)
+    out: List[Optional[str]] = [None] * len(candles)
+    def aligned(i):
+        if ea[i] > eb[i] > ec[i]:
+            return "BUY"
+        if ea[i] < eb[i] < ec[i]:
+            return "SELL"
+        return None
+    for i in range(c + 1, len(candles)):
+        now, prev = aligned(i), aligned(i - 1)
+        if now and now != prev:
+            out[i] = now
+    return out
+
+
 def atr_series(candles: List[dict], period: int = 14) -> List[Optional[float]]:
     """ATR per bar, matching oanda_trader.atr (simple mean of the last `period`
     true ranges). None until `period` bars of history exist at that index."""

@@ -88,3 +88,19 @@ def test_opening_range_breakout_fires_once_per_day_on_break():
     assert sig[4] == "BUY"
     assert sig[5] is None      # only one entry per day
     assert sig[:4] == [None, None, None, None]  # no entries while building the box
+
+
+def test_macd_cross_direction():
+    # steady uptrend then a sharp drop -> a down-cross appears
+    up=[_c(1.10+i*0.001,1.10+i*0.001,1.10+i*0.001,1.10+i*0.001,i) for i in range(60)]
+    down=[_c(1.16-i*0.002,1.16-i*0.002,1.16-i*0.002,1.16-i*0.002,60+i) for i in range(20)]
+    sig=fast.macd_cross_signals(up+down)
+    assert "SELL" in [s for s in sig if s]  # a bearish MACD cross occurs
+
+
+def test_ma_ribbon_alignment():
+    # flat, THEN an uptrend -> ribbon flips to bullish alignment inside the window
+    flat=[_c(1.10,1.10,1.10,1.10,i) for i in range(20)]
+    up=[_c(1.10+i*0.002,1.10+i*0.002,1.10+i*0.002,1.10+i*0.002,20+i) for i in range(30)]
+    sig=fast.ma_ribbon_signals(flat+up)
+    assert "BUY" in [s for s in sig if s]
