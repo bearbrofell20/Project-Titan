@@ -100,3 +100,29 @@ momentum, breakout, pullback, MACD, MA-ribbon scalping) has now been tested on
 major FX net of realistic costs and **none shows an edge**. The high-frequency
 ribbon was the worst, confirming that trade frequency mostly buys spread cost.
 Edge, if it exists for us, is not in the standard technical playbook.
+
+## Update — championship of the untested families (breakout+retest, squeeze, swing)
+
+Per the $100k rebuild spec, tested the families NOT in the earlier sweep, on 1.6y
+M15, 6 majors, real bid/ask + slippage, with ATR-adaptive stops, IS/OOS/holdout +
+6-window walk-forward:
+
+| Family | best OOS expectancy | walk-forward+ | verdict |
+|---|---|---|---|
+| Breakout + retest | −0.045R (HOLD −0.225) | 2/6 | fail |
+| Volatility squeeze → expansion | −0.29R | 0/6 | fail |
+| Structure swing pullback | −0.20R | 0/6 | fail |
+
+ATR-adaptive stops were *worse* than fixed (tight stops chopped on M15). None met
+the spec targets (PF ≥1.30, positive OOS, DD <10%).
+
+**Complete verdict:** the full day-trading strategy space named in the spec —
+trend, pullback, breakout, breakout+retest, mean-reversion, momentum, volatility
+squeeze, multi-timeframe/structure — has now been tested on 6 major pairs across
+M5 and M15, with fixed/ATR/trailing/BE/time exits, regime/session/spread gates,
+maximum selectivity, and at costs down to ZERO. **No configuration produces
+robust positive out-of-sample expectancy.** At zero cost the best is ~0R: the
+signals carry no edge to amplify. Price-technical day-trading of major FX on a
+retail account is, on this evidence, not a solvable edge. The remaining honest
+forex avenue is a *different signal class* (news/event reaction), which requires
+forward data collection to test — it cannot be backtested on price alone.

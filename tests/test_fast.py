@@ -104,3 +104,20 @@ def test_ma_ribbon_alignment():
     up=[_c(1.10+i*0.002,1.10+i*0.002,1.10+i*0.002,1.10+i*0.002,20+i) for i in range(30)]
     sig=fast.ma_ribbon_signals(flat+up)
     assert "BUY" in [s for s in sig if s]
+
+
+def test_breakout_retest_shape():
+    # rising then a break, pullback to level, close back up -> a BUY appears
+    import random; random.seed(1)
+    c=[_c(1.10,1.101,1.099,1.10,i) for i in range(25)]
+    c.append(_c(1.10,1.106,1.10,1.105,25))   # break above 20-bar high
+    c.append(_c(1.105,1.105,1.100,1.1005,26))# pull back to level
+    c.append(_c(1.1005,1.108,1.1005,1.106,27))# close back up -> retest confirm
+    sig=fast.breakout_retest_signals(c,lookback=20,retest_bars=6)
+    assert "BUY" in [s for s in sig if s]
+
+
+def test_squeeze_and_swing_return_lists():
+    c=[_c(1.10+0.0001*(i%5),1.10+0.0002,1.10-0.0002,1.10+0.0001*(i%5),i) for i in range(120)]
+    assert len(fast.squeeze_expansion_signals(c))==120
+    assert len(fast.swing_pullback_signals(c))==120

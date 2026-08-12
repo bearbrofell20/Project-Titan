@@ -164,6 +164,99 @@ def ma_ribbon_signals(candles: List[dict], a: int = 5, b: int = 8, c: int = 13) 
     return out
 
 
+def _sma(vals, i, n):
+    if i + 1 < n:
+        return None
+    return sum(vals[i - n + 1:i + 1]) / n
+
+
+def _std(vals, i, n):
+    if i + 1 < n:
+        return None
+    w = vals[i - n + 1:i + 1]
+    m = sum(w) / n
+    return (sum((x - m) ** 2 for x in w) / n) ** 0.5
+
+
+def breakout_retest_signals(candles, lookback=20, retest_bars=6, tol_frac=0.0005):
+    """Breakout + RETEST (spec C): price breaks the `lookback`-bar high/low, then
+    must pull back to the broken level and CLOSE back through it (rejection)
+    within `retest_bars`. One-shot per setup — avoids chasing the first candle."""
+    closes = [_ohlc(c)[3] for c in candles]
+    highs = [_ohlc(c)[1] for c in candles]
+    lows = [_ohlc(c)[2] for c in candles]
+    out = [None] * len(candles)
+    armed = None  # (dir, level, bars_left)
+    for i in range(lookback + 1, len(candles)):
+        hi = max(highs[i - lookback:i])
+        lo = min(lows[i - lookback:i])
+        if armed:
+            d, lvl, left = armed
+            left -= 1
+            if left <= 0:
+                armed = None
+            elif d == "BUY" and lows[i] <= lvl * (1 + tol_frac) and closes[i] > lvl:
+                out[i] = "BUY"; armed = None
+            elif d == "SELL" and highs[i] >= lvl * (1 - tol_frac) and closes[i] < lvl:
+                out[i] = "SELL"; armed = None
+            else:
+                armed = (d, lvl, left)
+        if armed is None:
+            if closes[i] > hi:
+                armed = ("BUY", hi, retest_bars)
+            elif closes[i] < lo:
+                armed = ("SELL", lo, retest_bars)
+    return out
+
+
+def squeeze_expansion_signals(candles, period=20, bb_k=2.0, kc_k=1.5, atr_p=20):
+    """Volatility squeeze -> expansion (spec F): Bollinger band inside Keltner
+    channel = compression; fire in the breakout direction the bar the squeeze
+    releases. BUY if releasing with close above the mean, SELL if below."""
+    closes = [_ohlc(c)[3] for c in candles]
+    ema_mid = ema_series(closes, period)
+    atr = atr_series(candles, atr_p)
+    out = [None] * len(candles)
+    squeezed_prev = False
+    for i in range(len(candles)):
+        sd = _std(closes, i, period)
+        sma = _sma(closes, i, period)
+        if sd is None or atr[i] is None:
+            continue
+        bb_u, bb_l = sma + bb_k * sd, sma - bb_k * sd
+        kc_u, kc_l = ema_mid[i] + kc_k * atr[i], ema_mid[i] - kc_k * atr[i]
+        squeezed = bb_u < kc_u and bb_l > kc_l
+        if squeezed_prev and not squeezed:  # squeeze just released
+            out[i] = "BUY" if closes[i] > ema_mid[i] else "SELL"
+        squeezed_prev = squeezed
+    return out
+
+
+def swing_pullback_signals(candles, swing=5, ema_trend=50, atr_p=14):
+    """Structure swing pullback (spec A): in an uptrend (price > slow EMA and a
+    higher-low structure), BUY when price pulls back near the last swing low and
+    turns up; mirror for downtrend. Uses market structure, not just indicators."""
+    o = [_ohlc(c) for c in candles]
+    closes = [x[3] for x in o]
+    highs = [x[1] for x in o]
+    lows = [x[2] for x in o]
+    ema = ema_series(closes, ema_trend)
+    out = [None] * len(candles)
+    for i in range(swing * 2 + ema_trend, len(candles)):
+        # last confirmed swing low/high (pivot `swing` bars back)
+        p = i - swing
+        is_low = all(lows[p] <= lows[p + k] for k in range(-swing, swing + 1) if k)
+        is_high = all(highs[p] >= highs[p + k] for k in range(-swing, swing + 1) if k)
+        up = closes[i] > ema[i]
+        dn = closes[i] < ema[i]
+        # pullback + turn-up in an uptrend
+        if up and is_low and lows[i - 1] <= lows[p] * 1.001 and closes[i] > closes[i - 1]:
+            out[i] = "BUY"
+        elif dn and is_high and highs[i - 1] >= highs[p] * 0.999 and closes[i] < closes[i - 1]:
+            out[i] = "SELL"
+    return out
+
+
 def atr_series(candles: List[dict], period: int = 14) -> List[Optional[float]]:
     """ATR per bar, matching oanda_trader.atr (simple mean of the last `period`
     true ranges). None until `period` bars of history exist at that index."""

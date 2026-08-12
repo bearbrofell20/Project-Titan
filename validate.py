@@ -44,6 +44,12 @@ def precompute(strategy: str, candles, trend_filter: bool = True, **kw):
         return fast.macd_cross_signals(candles)
     if strategy == "ribbon":
         return fast.ma_ribbon_signals(candles)
+    if strategy == "retest":
+        return fast.breakout_retest_signals(candles, kw.get("lookback", 20), kw.get("retest_bars", 6))
+    if strategy == "squeeze":
+        return fast.squeeze_expansion_signals(candles)
+    if strategy == "swing":
+        return fast.swing_pullback_signals(candles)
     raise ValueError(f"no fast precompute for {strategy!r}")
 
 
