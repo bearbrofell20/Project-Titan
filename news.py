@@ -25,11 +25,26 @@ from typing import Dict, List, Optional
 from xml.etree import ElementTree as ET
 
 FEEDS = [
+    # --- broad world + business ---
     ("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml"),
     ("BBC Business", "https://feeds.bbci.co.uk/news/business/rss.xml"),
     ("Yahoo Finance", "https://finance.yahoo.com/news/rssindex"),
+    ("Yahoo Headlines", "https://finance.yahoo.com/rss/topfinstories"),
     ("CNBC", "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114"),
-    # World-leader direct posts (Trump's Truth Social, via a public mirror).
+    ("MarketWatch", "https://feeds.content.dowjones.io/public/rss/mw_topstories"),
+    ("NYT Business", "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml"),
+    ("Guardian Business", "https://www.theguardian.com/uk/business/rss"),
+    # --- FX-specific desks ---
+    ("Investing FX", "https://www.investing.com/rss/news_1.rss"),
+    ("ForexLive", "https://www.forexlive.com/feed/news"),
+    # --- central banks (primary sources; high currency relevance) ---
+    ("Federal Reserve", "https://www.federalreserve.gov/feeds/press_all.xml"),
+    ("ECB", "https://www.ecb.europa.eu/rss/press.html"),
+    ("Bank of England", "https://www.bankofengland.co.uk/rss/news"),
+    # --- targeted currency/central-bank search streams ---
+    ("Google · Forex", "https://news.google.com/rss/search?q=forex+OR+currency+OR+central+bank+when:1d&hl=en-US&gl=US&ceid=US:en"),
+    ("Google · Central Banks", "https://news.google.com/rss/search?q=(Federal+Reserve+OR+ECB+OR+BOE+OR+BOJ+OR+inflation+OR+interest+rate)+when:1d&hl=en-US&gl=US&ceid=US:en"),
+    # --- world-leader direct posts (Trump's Truth Social, via a public mirror) ---
     ("Trump · Truth Social", "https://trumpstruth.org/feed"),
 ]
 
