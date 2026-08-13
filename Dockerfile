@@ -7,7 +7,7 @@ WORKDIR /app
 RUN pip install --no-cache-dir requests
 
 COPY oanda_trader.py probation.py dashboard.py run_all.py kalshi_bot.py ./
-COPY news.py news_bot.py ./
+COPY news.py news_bot.py event_study.py ./
 COPY kalshi_trader/ ./kalshi_trader/
 
 # Dashboard port

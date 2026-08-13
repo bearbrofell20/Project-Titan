@@ -68,9 +68,34 @@ def _run_news():
         print(f"[news] stopped: {e}")
 
 
+def _run_events():
+    """Collect news-event -> currency-reaction data (the forex news-edge experiment).
+    Needs the OANDA client for live prices; on by default (EVENT_STUDY=false to skip)."""
+    if os.getenv("EVENT_STUDY", "true").strip().lower() in {"0", "false", "no", "off"}:
+        return
+    try:
+        import time
+        import event_study
+        import oanda_trader as ot
+        token = ot._load_api_token()
+        if not token:
+            return
+        client = ot.OandaClient(token)
+        collector = event_study.EventCollector(str(ot.Config.LOG_DIR))
+        while True:
+            try:
+                collector.poll(client)
+            except Exception as e:
+                print(f"[events] tick error: {e}")
+            time.sleep(120)  # every 2 min: catch reaction windows
+    except Exception as e:
+        print(f"[events] stopped: {e}")
+
+
 def main():
     threading.Thread(target=_serve_dashboard, daemon=True).start()
     threading.Thread(target=_run_news, daemon=True).start()
+    threading.Thread(target=_run_events, daemon=True).start()
     if _enabled("KALSHI_ENABLE"):
         threading.Thread(target=_run_kalshi, daemon=True).start()
     # OANDA bot blocks in the trading loop until Ctrl-C / kill switch.
