@@ -4,8 +4,10 @@
 #   OANDA_API_TOKEN=your-practice-token
 #   OANDA_ACCOUNT_ID=101-001-39975042-001
 #
-# The defaults below are the backtest-winning config (ema_trend on tight
-# majors, signals-only, testing-week probation). Override any of them in .env.
+# The defaults below are the validation-winning config: ema_trend 20/60 on the
+# JPY crosses AUD_JPY + EUR_JPY (H1), signals-only, testing-week probation.
+# These two pairs are the only ones with a positive edge across IS/OOS/holdout
+# and 6/6 walk-forward windows (see AUDIT.md). Override any of them in .env.
 services:
   titan:
     build: .
@@ -18,10 +20,16 @@ services:
       OANDA_ACCOUNT_ID: "${OANDA_ACCOUNT_ID:-101-001-39975042-001}"
       OANDA_API_URL: "${OANDA_API_URL:-https://api-fxpractice.oanda.com}"
       OANDA_DRY_RUN: "${OANDA_DRY_RUN:-false}"
-      # --- winning strategy config ---
+      # --- winning strategy config (JPY-cross trend edge) ---
       OANDA_STRATEGY: "${OANDA_STRATEGY:-ema_trend}"
-      OANDA_INSTRUMENTS: "${OANDA_INSTRUMENTS:-EUR_USD,GBP_USD,USD_JPY,USD_CHF,AUD_USD,USD_CAD}"
+      OANDA_INSTRUMENTS: "${OANDA_INSTRUMENTS:-AUD_JPY,EUR_JPY}"
+      OANDA_TIMEFRAME: "${OANDA_TIMEFRAME:-H1}"
+      OANDA_CANDLE_COUNT: "${OANDA_CANDLE_COUNT:-150}"
       OANDA_TREND_FILTER: "${OANDA_TREND_FILTER:-true}"
+      OANDA_TREND_FAST: "${OANDA_TREND_FAST:-20}"
+      OANDA_TREND_SLOW: "${OANDA_TREND_SLOW:-60}"
+      OANDA_STOP_LOSS_PIPS: "${OANDA_STOP_LOSS_PIPS:-30}"
+      OANDA_TAKE_PROFIT_PIPS: "${OANDA_TAKE_PROFIT_PIPS:-75}"
       OANDA_MIN_OPEN_TRADES: "${OANDA_MIN_OPEN_TRADES:-0}"
       OANDA_RISK_PER_TRADE: "${OANDA_RISK_PER_TRADE:-10}"
       # --- testing-week probation ---

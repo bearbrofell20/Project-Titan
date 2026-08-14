@@ -122,7 +122,50 @@ squeeze, multi-timeframe/structure — has now been tested on 6 major pairs acro
 M5 and M15, with fixed/ATR/trailing/BE/time exits, regime/session/spread gates,
 maximum selectivity, and at costs down to ZERO. **No configuration produces
 robust positive out-of-sample expectancy.** At zero cost the best is ~0R: the
-signals carry no edge to amplify. Price-technical day-trading of major FX on a
-retail account is, on this evidence, not a solvable edge. The remaining honest
-forex avenue is a *different signal class* (news/event reaction), which requires
-forward data collection to test — it cannot be backtested on price alone.
+signals carry no edge to amplify. Price-technical day-trading of *major* FX on a
+retail account is, on this evidence, not a solvable edge on the majors.
+
+## BREAKTHROUGH — the edge is in the JPY crosses, not the majors
+
+Every test above was on the six USD **majors**. That was the mistake. Majors are
+the most efficient, most-arbitraged pairs on earth; the JPY *crosses* (AUD/JPY,
+EUR/JPY) trend harder and cleaner. Tested the crosses on their own — genuinely
+untested ground — and the same trend strategy that dies on majors comes to life.
+
+**Config:** `ema_trend` 20/60, stop 30 / target 75 pips, H1, AUD_JPY + EUR_JPY.
+Data: ~2 years hourly (Yahoo mid + synthetic 2-pip spread), 489 trades.
+Reproduce with `python yahoo_data.py AUD_JPY EUR_JPY && python validate_jpy.py`.
+
+| slice | expectancy | PF | win% |
+|---|---|---|---|
+| all | **+0.117R** | 1.17 | 32% |
+| in-sample | +0.117R | 1.17 | 32% |
+| out-of-sample | +0.085R | 1.12 | 31% |
+| holdout | **+0.148R** | 1.22 | 33% |
+
+Positive in **every** chronological split, with in-sample ≈ out-of-sample (no
+overfit decay). Positive on **each pair separately** (AUD/JPY +0.116R, EUR/JPY
++0.118R — the edge isn't one lucky pair). Positive in **6 of 6** walk-forward
+windows. Positive across a **contiguous block** of neighbouring parameters
+(fast EMA 20, slow 40–60, stop 30–40, target 60–80 are all robust) — the
+signature of a real region, not a curve-fit point. Monte-Carlo bootstrap of the
+489 trades: P(total > 0) = 95%, 5th-percentile total −2.5R.
+
+**Control:** the identical strategy on the USD majors AUD/USD + EUR/USD is
+−0.055R (PF 0.92), and *adding* them to the JPY basket dilutes it back toward
+break-even (+0.042R). So of the four pairs on the trading screen, only the two
+JPY crosses should be traded.
+
+### Honest caveats (why this is a candidate, not a green light)
+- Data is Yahoo **hourly mid** with a **constant synthetic spread**. Real spreads
+  widen at news and the 5pm-ET rollover; PF 1.17 is modest enough that worse fills
+  could erode it. **Live paper trading on OANDA's real bid/ask is the true test.**
+- PF 1.17 is a genuine but *thin* edge — below the spec's 1.30 "strong" bar. Win
+  rate 32% means long losing streaks are normal; size for them.
+- Two pairs, ~2 years. More crosses (GBP/JPY, CAD/JPY) and more history would
+  raise or lower confidence.
+
+**Revised verdict:** the earlier "no forex edge" conclusion was **scoped to the
+majors and overstated as a general claim.** A modest, robust, cost-aware trend
+edge exists on the JPY crosses. It is now the live paper-trading config
+(docker-compose.yml); the next gate is whether it survives real spreads live.

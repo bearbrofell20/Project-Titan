@@ -54,9 +54,11 @@ chmod 600 .env
 docker compose up -d --build
 ```
 
-The winning config (ema_trend, 6 majors, signals-only, +$50 probation bar) is
-baked into `docker-compose.yml` as defaults — you only need the two credentials
-above. Open `http://localhost:8080` (or the machine's IP) for the dashboard.
+The winning config (ema_trend 20/60 on the JPY crosses AUD_JPY + EUR_JPY, H1,
+signals-only, +$50 probation bar) is baked into `docker-compose.yml` as defaults
+— you only need the two credentials above. These two pairs are the only ones with
+a validated positive edge (see AUDIT.md). Open `http://localhost:8080` (or the
+machine's IP) for the dashboard.
 
 ---
 
@@ -75,8 +77,14 @@ OANDA_ACCOUNT_ID=101-001-39975042-001
 OANDA_API_URL=https://api-fxpractice.oanda.com
 OANDA_DRY_RUN=false
 OANDA_STRATEGY=ema_trend
-OANDA_INSTRUMENTS=EUR_USD,GBP_USD,USD_JPY,USD_CHF,AUD_USD,USD_CAD
+OANDA_INSTRUMENTS=AUD_JPY,EUR_JPY
+OANDA_TIMEFRAME=H1
+OANDA_CANDLE_COUNT=150
 OANDA_TREND_FILTER=true
+OANDA_TREND_FAST=20
+OANDA_TREND_SLOW=60
+OANDA_STOP_LOSS_PIPS=30
+OANDA_TAKE_PROFIT_PIPS=75
 OANDA_MIN_OPEN_TRADES=0
 OANDA_TRIAL_MIN_PNL=50
 EOF
