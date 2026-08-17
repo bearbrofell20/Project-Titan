@@ -30,6 +30,9 @@ services:
       OANDA_TREND_SLOW: "${OANDA_TREND_SLOW:-60}"
       OANDA_STOP_LOSS_PIPS: "${OANDA_STOP_LOSS_PIPS:-30}"
       OANDA_TAKE_PROFIT_PIPS: "${OANDA_TAKE_PROFIT_PIPS:-75}"
+      # early-exit overrides OFF: let the clean 30/75 broker stop+target run
+      OANDA_PROFIT_TAKE_PCT: "${OANDA_PROFIT_TAKE_PCT:-0}"
+      OANDA_LOSS_CUT_PCT: "${OANDA_LOSS_CUT_PCT:-0}"
       OANDA_MIN_OPEN_TRADES: "${OANDA_MIN_OPEN_TRADES:-0}"
       OANDA_RISK_PER_TRADE: "${OANDA_RISK_PER_TRADE:-10}"
       # --- testing-week probation ---

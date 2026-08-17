@@ -172,16 +172,19 @@ class Config:
     MIN_OPEN_TRADES = _env_int("OANDA_MIN_OPEN_TRADES", 5)
     ONE_POSITION_PER_INSTRUMENT = True   # no stacking on every candle
 
-    # Profit-take rule: close a trade once its unrealized profit reaches this
-    # percent of the margin committed to that trade ("10% back -> sell").
-    PROFIT_TAKE_PCT = _env_float("OANDA_PROFIT_TAKE_PCT", 10.0)
-    # Loss-cut rule: close a trade once its unrealized loss reaches this percent
-    # of the margin committed to it. At 5% this fires *before* the 20-pip hard
-    # stop on pairs where that stop is a larger share of margin, so it caps the
-    # loss early instead of letting it run to the full stop. (To *guarantee* a
-    # small dollar loss regardless of pair, lower OANDA_RISK_PER_TRADE — the stop
-    # distance sets the hard maximum.)
-    LOSS_CUT_PCT = _env_float("OANDA_LOSS_CUT_PCT", 5.0)
+    # Early-exit override rules — BOTH DISABLED by default (0) so the bot runs
+    # the *validated* strategy exactly: enter on signal, let the broker-side
+    # stop-loss and take-profit (STOP_LOSS_PIPS / TAKE_PROFIT_PIPS) do the exits.
+    #
+    # These percent-of-margin cuts predate the JPY-cross edge and quietly broke
+    # it: the profit-take closed winners long before the 75-pip target (killing
+    # the reward that pays for the losers), and the loss-cut closed trades before
+    # the 30-pip stop (on noise). The backtest edge only exists with the clean
+    # 30/75 stop-and-target, so we leave these off. The 30-pip broker stop still
+    # caps every trade's loss (~$10 at the default risk) regardless.
+    # Set OANDA_PROFIT_TAKE_PCT / OANDA_LOSS_CUT_PCT > 0 to re-enable either.
+    PROFIT_TAKE_PCT = _env_float("OANDA_PROFIT_TAKE_PCT", 0.0)
+    LOSS_CUT_PCT = _env_float("OANDA_LOSS_CUT_PCT", 0.0)
 
     # Safety -----------------------------------------------------------------
     # DRY_RUN: log intended orders, send nothing. Default False so the demo
@@ -984,15 +987,17 @@ def signal_for(candles, instrument, htf_bias=None):
 
 
 def should_take_profit(unrealized_pl, margin_used, pct):
-    """True when a trade's unrealized return on its margin reaches ``pct`` percent."""
-    if margin_used <= 0:
+    """True when a trade's unrealized return on its margin reaches ``pct`` percent.
+    ``pct <= 0`` disables the rule (let the broker take-profit target run)."""
+    if pct <= 0 or margin_used <= 0:
         return False
     return (unrealized_pl / margin_used) * 100.0 >= pct
 
 
 def should_cut_loss(unrealized_pl, margin_used, pct):
-    """True when a trade's unrealized loss reaches ``pct`` percent of its margin."""
-    if margin_used <= 0:
+    """True when a trade's unrealized loss reaches ``pct`` percent of its margin.
+    ``pct <= 0`` disables the rule (let the broker stop-loss run)."""
+    if pct <= 0 or margin_used <= 0:
         return False
     return (unrealized_pl / margin_used) * 100.0 <= -pct
 
@@ -1106,8 +1111,10 @@ class OandaBot:
             logger.info(f"Analyzer: ON (min ADX {Config.MIN_ADX:.0f}, min ATR {Config.MIN_ATR_PIPS:.0f} pips)")
         logger.info(f"Risk per trade: ${Config.RISK_PER_TRADE}")
         logger.info(f"Stop Loss: {Config.STOP_LOSS_PIPS} pips | Take Profit: {Config.TAKE_PROFIT_PIPS} pips")
-        logger.info(f"Profit-take: +{Config.PROFIT_TAKE_PCT}% | Loss-cut: -{Config.LOSS_CUT_PCT}% "
-                    f"(of margin) | Open trades: min {Config.MIN_OPEN_TRADES}, max {Config.MAX_OPEN_TRADES}")
+        _pt = f"+{Config.PROFIT_TAKE_PCT}%" if Config.PROFIT_TAKE_PCT > 0 else "off"
+        _lc = f"-{Config.LOSS_CUT_PCT}%" if Config.LOSS_CUT_PCT > 0 else "off"
+        logger.info(f"Early exits (of margin) — Profit-take: {_pt} | Loss-cut: {_lc} "
+                    f"| Open trades: min {Config.MIN_OPEN_TRADES}, max {Config.MAX_OPEN_TRADES}")
         logger.info(f"Monitoring {len(Config.INSTRUMENTS)} pairs")
         logger.info(f"Kill switch: create '{Config.KILL_SWITCH_FILE}' to stop")
         logger.info("=" * 60)
