@@ -50,6 +50,22 @@ def build_signals(m15: List[Bar], h4: List[Bar], cfg: StrategyConfig) -> Signals
     lows = [b.l for b in m15]
     ema_m15 = ind.ema(closes, cfg.entry_ema)
     atr_m15 = ind.atr(highs, lows, closes, cfg.atr_period)
+
+    # ---- self-contained fast/slow EMA trend (no HTF regime needed) ----
+    if cfg.entry_style == "ema_trend":
+        fast = ind.ema(closes, cfg.fast_ema)
+        slow = ind.ema(closes, cfg.slow_ema)
+        direction = [0] * len(m15)
+        for i in range(1, len(m15)):
+            if None in (fast[i], fast[i - 1], slow[i], slow[i - 1]):
+                continue
+            if fast[i - 1] <= slow[i - 1] and fast[i] > slow[i]:
+                direction[i] = 1
+            elif fast[i - 1] >= slow[i - 1] and fast[i] < slow[i]:
+                direction[i] = -1
+        return Signals(direction=direction, atr=atr_m15, ema=fast,
+                       h4_ema_at=[None] * len(m15), h4_close_at=[None] * len(m15))
+
     h4_ema = ind.ema([b.c for b in h4], cfg.htf_ema)
     h4_close_at, h4_ema_at = _h4_regime_pointer(m15, h4, h4_ema)
 

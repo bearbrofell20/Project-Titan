@@ -18,7 +18,7 @@ import logging
 from dataclasses import dataclass
 from typing import List, Optional
 
-from config import CostConfig, RiskConfig, StrategyConfig, PIP
+from config import CostConfig, RiskConfig, StrategyConfig, pip_size
 from data_manager import Bar
 from strategy import Signals
 
@@ -69,6 +69,7 @@ def simulate(m15: List[Bar], sig: Signals, scfg: StrategyConfig,
 
     day_key: Optional[int] = None
     day_start_equity = equity
+    PIP = pip_size(scfg.instrument)
 
     i = 0
     n = len(m15)

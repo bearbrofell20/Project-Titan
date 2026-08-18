@@ -11,7 +11,12 @@ import os
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-PIP = 0.0001  # EUR/USD pip size
+PIP = 0.0001  # EUR/USD pip size (default)
+
+
+def pip_size(instrument: str) -> float:
+    """Pip size by instrument: 0.01 for JPY quote pairs, else 0.0001."""
+    return 0.01 if instrument.endswith("JPY") else 0.0001
 
 
 # --------------------------------------------------------------------------- #
@@ -46,9 +51,11 @@ class StrategyConfig:
     instrument: str = "EUR_USD"
     entry_tf: str = "M15"
     regime_tf: str = "H4"
-    entry_style: str = "cross"  # "cross" (baseline) or "pullback"
+    entry_style: str = "cross"  # "cross" (baseline), "pullback", or "ema_trend"
     htf_ema: int = 200          # H4 trend filter
     entry_ema: int = 20         # M15 signal EMA
+    fast_ema: int = 20          # ema_trend fast/slow crossover (self-contained trend)
+    slow_ema: int = 60
     atr_period: int = 14
     stop_atr_mult: float = 1.5  # initial stop distance
     trail_atr_mult: float = 1.5 # ATR trailing distance (0 disables)

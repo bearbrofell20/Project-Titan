@@ -93,3 +93,31 @@ refuses to start). Forcing a positive result from here would be curve-fitting.
 longer 3–5 year M15 sample via a live OANDA key — each tested on this same
 harness with the same OOS discipline. Price-only indicator day-trading of EUR/USD
 is not, on this evidence, a solvable edge.
+
+---
+
+## Addendum — JPY-cross trend edge re-audited (and it failed)
+
+Earlier work flagged an EMA 20/60 trend-follow on AUD_JPY + EUR_JPY (H1) as a
+candidate (positive across splits with **fixed 30-pip stop / 75-pip target** on
+Yahoo H1 data). It was re-run through this stricter harness (realistic next-bar
+fills; **ATR-based** stop/target instead of the exact pips it was discovered
+with) — `run_jpy_audit.py`:
+
+| slice | expectancy | PF |
+|---|---|---|
+| all (509 trades) | **−0.008 R** | 0.99 |
+| in-sample | +0.021 R | 1.03 |
+| validation | −0.187 R | 0.77 |
+| out-of-sample | +0.079 R | 1.11 |
+
+Walk-forward: **2 of 6** windows positive. Cost stress: PF 0.93 → 0.85 as costs
+rise. Monte Carlo: **P(total > 0) = 45%**.
+
+**Interpretation:** the earlier positive result was **fragile** — it depended on
+the specific fixed-pip exit (and on Yahoo's clean synthetic spread). Swap in a
+reasonable alternative exit and realistic execution and the edge disappears. A
+robust edge survives a change of exit; this one does not. **Classification:
+NOT VALIDATED.** The live paper bot is still trading this config on real OANDA
+bid/ask — that live run is now the only remaining test, and the prior for it is
+weak, not strong. It should be treated as an experiment, not a proven winner.
