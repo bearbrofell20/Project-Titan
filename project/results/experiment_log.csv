@@ -1,0 +1,8 @@
+experiment_id,params,trades,IS_exp,VALID_exp,VALID_pf,OOS_exp,VALID_net_r
+H0_baseline,{},1592,-0.2382,-0.2024,0.682,-0.3626,-70.63
+H1_notrail_hold_cutoff,"{'trail_atr_mult': 0.0, 'target_r': 0.0}",1064,-0.2831,-0.2809,0.712,-0.2739,-67.14
+H2_fixed_2R_notrail,"{'trail_atr_mult': 0.0, 'target_r': 2.0}",1364,-0.2354,-0.2825,0.639,-0.355,-83.34
+H3_breakeven_1R_trail,"{'breakeven_at_r': 1.0, 'trail_atr_mult': 1.5}",1590,-0.2455,-0.2084,0.677,-0.3364,-72.52
+H4_session_ny_overlap,"{'sessions_utc': [12, 13, 14, 15, 16, 17, 18, 19]}",607,-0.1996,-0.1875,0.642,-0.1598,-24.75
+H5_pullback_hold_cutoff,"{'entry_style': 'pullback', 'trail_atr_mult': 0.0, 'target_r': 0.0}",898,-0.3735,-0.2156,0.775,-0.2302,-37.74
+H6_wider_stop_2atr,"{'stop_atr_mult': 2.0, 'trail_atr_mult': 0.0, 'target_r': 0.0}",902,-0.2403,-0.1865,0.781,-0.2199,-36.92
