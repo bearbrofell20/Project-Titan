@@ -183,11 +183,23 @@ def simulate(m15: List[Bar], sig: Signals, scfg: StrategyConfig,
                     entry_px = entry_mid + sp + slip()
                 else:
                     entry_px = entry_mid - sp - slip()
-                risk_price = scfg.stop_atr_mult * atr_prev
+                # structure-based exits if the signal supplies them, else ATR/R
+                struct_stop = sig.stop_px[i - 1] if sig.stop_px else None
+                struct_tgt = sig.target_px[i - 1] if sig.target_px else None
+                if struct_stop is not None and (entry_mid - struct_stop) * s > 0:
+                    risk_price = abs(entry_mid - struct_stop)
+                    stop = struct_stop
+                    target = struct_tgt if struct_tgt else (
+                        entry_mid + s * scfg.target_r * risk_price if scfg.target_r else 0.0)
+                else:
+                    risk_price = scfg.stop_atr_mult * atr_prev
+                    stop = entry_mid - s * risk_price
+                    target = (entry_mid + s * scfg.target_r * risk_price) if scfg.target_r else 0.0
+                if risk_price <= 0:
+                    i += 1
+                    continue
                 risk_usd = equity * rcfg.risk_per_trade
                 units = risk_usd / risk_price
-                stop = entry_mid - s * risk_price
-                target = (entry_mid + s * scfg.target_r * risk_price) if scfg.target_r else 0.0
                 pos = {"dir": s, "entry_ts": bar.ts, "entry_px": entry_px,
                        "entry_mid": entry_mid, "units": units, "risk_usd": risk_usd,
                        "risk_price": risk_price, "stop": stop, "target": target,

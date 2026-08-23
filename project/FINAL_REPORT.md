@@ -121,3 +121,28 @@ robust edge survives a change of exit; this one does not. **Classification:
 NOT VALIDATED.** The live paper bot is still trading this config on real OANDA
 bid/ask — that live run is now the only remaining test, and the prior for it is
 weak, not strong. It should be treated as an experiment, not a proven winner.
+
+---
+
+## Addendum — SMC / market-structure stack (ablation) — no edge
+
+Built objective, no-look-ahead engines (`structure.py` swings/BOS/CHOCH with
+delayed confirmation; `liquidity.py` prev-day levels + sweep detection) and tested
+the classic **liquidity sweep → MSS → retest → entry** stack on EUR/USD M15,
+standard 1.5×ATR/2R exits, with component ablation (`run_smc.py`):
+
+| variant | trades | all exp | validation | OOS |
+|---|---|---|---|---|
+| sweep only | 746 | −0.212 R | −0.135 | −0.266 |
+| sweep + MSS | 313 | −0.216 R | −0.511 | −0.242 |
+| sweep + MSS + retest | 197 | −0.344 R | −0.642 | −0.842 |
+
+**Every variant negative; each added SMC component makes it worse.** That is
+positive evidence the components carry no predictive value (a real edge would
+*improve* under confirmation, not degrade). Re-tested with the "purist"
+SMC exit — a **structure stop at the swept extreme** and a 2R target off it — and
+it is **still negative in every variant and every split** (sweep-only −0.61 R,
+sweep+MSS −0.22 R, full stack −0.34 R; all negative IS/VALID/OOS). So the failure
+is not the exit. Remaining untested: other pairs, and swing/equal-high liquidity
+pools beyond prev-day levels. But across two exit styles and a degrading ablation,
+**the SMC entry stack shows no edge on EUR/USD M15.**

@@ -25,6 +25,9 @@ class Signals:
     ema: List[Optional[float]]  # M15 entry EMA at bar i
     h4_ema_at: List[Optional[float]]  # regime EMA applicable at bar i's close
     h4_close_at: List[Optional[float]]
+    # optional per-signal structure exits (price levels); None -> use ATR/R exits
+    stop_px: Optional[List[Optional[float]]] = None
+    target_px: Optional[List[Optional[float]]] = None
 
 
 def _h4_regime_pointer(m15: List[Bar], h4: List[Bar], h4_ema: List[Optional[float]]):
