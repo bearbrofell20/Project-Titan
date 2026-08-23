@@ -50,6 +50,53 @@ def atr(highs: Sequence[float], lows: Sequence[float], closes: Sequence[float],
     return out
 
 
+def adx(highs: Sequence[float], lows: Sequence[float], closes: Sequence[float],
+        period: int = 14) -> List[Optional[float]]:
+    """Wilder's ADX (trend strength). out[i] uses bars 0..i only."""
+    n = len(closes)
+    out: List[Optional[float]] = [None] * n
+    if n < 2 * period:
+        return out
+    plus_dm, minus_dm, trs = [], [], []
+    for i in range(1, n):
+        up = highs[i] - highs[i - 1]
+        dn = lows[i - 1] - lows[i]
+        plus_dm.append(up if (up > dn and up > 0) else 0.0)
+        minus_dm.append(dn if (dn > up and dn > 0) else 0.0)
+        trs.append(true_range(highs[i], lows[i], closes[i - 1]))
+    # Wilder-smoothed +DI/-DI, then DX, then ADX
+    def wilder(seq):
+        sm = [None] * len(seq)
+        s = sum(seq[:period])
+        sm[period - 1] = s
+        for i in range(period, len(seq)):
+            s = s - s / period + seq[i]
+            sm[i] = s
+        return sm
+    sp, sm, st = wilder(plus_dm), wilder(minus_dm), wilder(trs)
+    dx = [None] * len(trs)
+    for i in range(len(trs)):
+        if sp[i] is None or not st[i]:
+            continue
+        pdi = 100 * sp[i] / st[i]
+        mdi = 100 * sm[i] / st[i]
+        denom = pdi + mdi
+        dx[i] = 100 * abs(pdi - mdi) / denom if denom else 0.0
+    # ADX = Wilder average of DX; align back to bar index (offset by 1 for the diff)
+    first = period - 1
+    vals = [d for d in dx[first:first + period] if d is not None]
+    if len(vals) < period:
+        return out
+    a = sum(vals) / period
+    out[first + period] = a
+    for i in range(first + period + 1, len(dx)):
+        if dx[i] is None:
+            continue
+        a = (a * (period - 1) + dx[i]) / period
+        out[i + 1] = a
+    return out
+
+
 def crossed_up(prev_price: float, prev_ref: float, price: float, ref: float) -> bool:
     """True when price crosses from <= ref to > ref between the two bars."""
     return prev_price <= prev_ref and price > ref

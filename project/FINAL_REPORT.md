@@ -146,3 +146,43 @@ sweep+MSS −0.22 R, full stack −0.34 R; all negative IS/VALID/OOS). So the fa
 is not the exit. Remaining untested: other pairs, and swing/equal-high liquidity
 pools beyond prev-day levels. But across two exit styles and a degrading ablation,
 **the SMC entry stack shows no edge on EUR/USD M15.**
+
+---
+
+## Addendum — regime-switching — no edge
+
+Built an objective regime classifier (`regime.py`: Wilder ADX for trend strength,
+EMA-slope for direction, ATR-vs-rolling-median for volatility expansion) and tested
+whether gating each family to its "ideal" regime beats running it blind
+(`run_regime.py`, EUR/USD M15, ATR exits):
+
+| family | unconditional (OOS) | regime-gated (OOS) |
+|---|---|---|
+| trend → trending | −0.086 | −0.151 (worse) |
+| mean-reversion → range | −0.465 | −0.599 (worse) |
+| breakout → expansion | −0.221 | −0.286 (worse) |
+
+**Regime-gating improved nothing out-of-sample** — it made every family worse and
+cut the sample. The regime hypothesis fails.
+
+## COMPREHENSIVE VERDICT
+
+Tested, honestly and out-of-sample, on real EUR/USD data (plus JPY crosses and
+news events): **trend, momentum, breakout, mean-reversion, session filters,
+multi-timeframe regime filters, JPY-cross trend, news-reaction (both directions),
+the full SMC stack (liquidity sweep → MSS → retest, both exit styles, ablated),
+and regime-switching.** Every family is **negative after realistic costs,
+out-of-sample.** No individual strategy is profitable, so an ensemble is moot — a
+portfolio of negative-expectancy strategies is negative expectancy; combining
+losers does not make a winner.
+
+> **FINAL: NO ROBUST EDGE FOUND** across the entire tested strategy universe on
+> this data. This is a real, well-evidenced finding — consistent with liquid FX
+> being efficient at retail scale — not a tuning failure. Paper trading stays
+> disabled; no real capital is justified.
+>
+> The only avenues genuinely *not* closed here require inputs this environment
+> can't supply: true tick/order-flow data, an economic-surprise (actual-vs-forecast)
+> feed, or a structural/latency advantage. Each is a different *class* of input,
+> not another indicator — and each is already heavily arbitraged by well-resourced
+> firms.
