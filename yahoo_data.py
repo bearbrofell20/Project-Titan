@@ -25,9 +25,16 @@ from pathlib import Path
 SYMBOLS = {
     "AUD_JPY": ("AUDJPY=X", 0.010), "EUR_JPY": ("EURJPY=X", 0.010),
     "GBP_JPY": ("GBPJPY=X", 0.010), "USD_JPY": ("USDJPY=X", 0.010),
+    "CAD_JPY": ("CADJPY=X", 0.010), "NZD_JPY": ("NZDJPY=X", 0.010),
+    "CHF_JPY": ("CHFJPY=X", 0.010),
     "EUR_USD": ("EURUSD=X", 0.00006), "AUD_USD": ("AUDUSD=X", 0.00006),
     "GBP_USD": ("GBPUSD=X", 0.00006), "USD_CAD": ("USDCAD=X", 0.00006),
     "XAU_USD": ("GC=F", 0.15),  # gold: ~0.30 spread (OANDA-typical)
+    # non-JPY trending crosses (quote pip 0.0001, ~3-pip synthetic spread)
+    "GBP_AUD": ("GBPAUD=X", 0.00015), "EUR_AUD": ("EURAUD=X", 0.00015),
+    "AUD_NZD": ("AUDNZD=X", 0.00015), "GBP_CAD": ("GBPCAD=X", 0.00015),
+    "EUR_CAD": ("EURCAD=X", 0.00015), "AUD_CAD": ("AUDCAD=X", 0.00015),
+    "GBP_NZD": ("GBPNZD=X", 0.00020), "EUR_NZD": ("EURNZD=X", 0.00020),
 }
 HDR = {"User-Agent": "Mozilla/5.0"}
 
