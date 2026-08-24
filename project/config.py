@@ -15,7 +15,11 @@ PIP = 0.0001  # EUR/USD pip size (default)
 
 
 def pip_size(instrument: str) -> float:
-    """Pip size by instrument: 0.01 for JPY quote pairs, else 0.0001."""
+    """Pip size by instrument: 0.1 for gold/silver, 0.01 for JPY, else 0.0001."""
+    if instrument.startswith("XAU"):
+        return 0.1
+    if instrument.startswith("XAG"):
+        return 0.01
     return 0.01 if instrument.endswith("JPY") else 0.0001
 
 

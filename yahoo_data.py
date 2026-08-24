@@ -27,6 +27,7 @@ SYMBOLS = {
     "GBP_JPY": ("GBPJPY=X", 0.010), "USD_JPY": ("USDJPY=X", 0.010),
     "EUR_USD": ("EURUSD=X", 0.00006), "AUD_USD": ("AUDUSD=X", 0.00006),
     "GBP_USD": ("GBPUSD=X", 0.00006), "USD_CAD": ("USDCAD=X", 0.00006),
+    "XAU_USD": ("GC=F", 0.15),  # gold: ~0.30 spread (OANDA-typical)
 }
 HDR = {"User-Agent": "Mozilla/5.0"}
 

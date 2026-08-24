@@ -203,3 +203,37 @@ worse, not better** — the lower timeframe adds noise and the fixed spread eats
 larger share of each smaller move. The result also says price tends to *continue*
 through key levels more than it reverses at them (fading loses badly), and
 continuation (breakout) was already tested and negative too. No edge in levels.
+
+## Addendum — GOLD (XAU_USD) breakout — FIRST ROBUST CANDIDATE
+
+Gold is not an efficient mean-reverting major; it trends and breaks out. Tested
+Donchian breakout on XAU_USD H1 (~2.4y, Yahoo GC=F mid + synthetic $0.30 spread),
+1.5×ATR stop / 2R target (`run_gold.py`, `run_gold_audit.py`):
+
+**Flagship breakout(40):** +0.329 R expectancy, PF 1.59, 159 trades, Sharpe 2.77,
+maxDD 13 R, return/DD ~4.0. Positive IS +0.32 / VALID +0.32 / OOS +0.37.
+
+It survives the audit that killed every prior candidate:
+- **Parameter robustness:** lookback 15–60 ALL positive across IS/VALID/OOS
+  (+0.26 to +0.44 R) — a broad stable region, not a point.
+- **Walk-forward:** 5/6 windows positive (worst −0.04 R, ~flat).
+- **Cost stress:** +0.329 → +0.300 R at 3× spread + 2-pip slip — NOT cost-fragile
+  (gold moves dwarf the spread).
+- **Long +0.19 R and short +0.57 R** — both sides work.
+- **Monte Carlo:** P(total > 0) = 99.8%, 5th-pct +22 R.
+
+**Honest caveats (why "candidate", not "proven"):**
+1. **Sample is a historic gold BULL market** (~$2,200 → $4,700 over the window).
+   Breakout thrives in strong trends; performance in a gold *bear/range* regime is
+   **unproven**. (Mitigant: the short side was also positive, and the one
+   non-trending walk-forward window was ~flat, not a large loss.)
+2. Data is Yahoo gold **futures mid** with a **synthetic** spread — not real OANDA
+   XAU_USD bid/ask. Cost-stress resilience is reassuring, but live spreads are the
+   real test.
+3. ~2.4 years, 159 trades — decent, not deep.
+
+**Classification: ROBUST CANDIDATE — proceed to live paper trading on real
+XAU_USD bid/ask.** This is the strongest, most robust result in the project and
+the first to earn a live paper test. It is NOT yet cleared for real capital: the
+open question is regime-generalization, which only more data (and a non-bull gold
+period) can answer.
