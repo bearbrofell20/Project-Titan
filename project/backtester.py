@@ -183,6 +183,21 @@ def simulate(m15: List[Bar], sig: Signals, scfg: StrategyConfig,
                     entry_px = entry_mid + sp + slip()
                 else:
                     entry_px = entry_mid - sp - slip()
+                # fixed-pip exits (live-bot mechanics) take priority if set
+                if scfg.fixed_stop_pips > 0:
+                    risk_price = scfg.fixed_stop_pips * PIP
+                    stop = entry_mid - s * risk_price
+                    tgt_pips = scfg.fixed_target_pips or (scfg.target_r * scfg.fixed_stop_pips)
+                    target = entry_mid + s * tgt_pips * PIP
+                    risk_usd = equity * rcfg.risk_per_trade
+                    units = risk_usd / risk_price
+                    pos = {"dir": s, "entry_ts": bar.ts, "entry_px": entry_px,
+                           "entry_mid": entry_mid, "units": units, "risk_usd": risk_usd,
+                           "risk_price": risk_price, "stop": stop, "target": target,
+                           "bars": 0, "mae": 0.0, "mfe": 0.0, "be_done": False,
+                           "entry_hour": bar.hour_utc}
+                    i += 1
+                    continue
                 # structure-based exits if the signal supplies them, else ATR/R
                 struct_stop = sig.stop_px[i - 1] if sig.stop_px else None
                 struct_tgt = sig.target_px[i - 1] if sig.target_px else None

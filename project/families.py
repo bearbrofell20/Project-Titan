@@ -57,6 +57,19 @@ def breakout(bars: List[Bar], lookback: int = 20) -> List[int]:
     return d
 
 
+def breakout_close(bars: List[Bar], lookback: int = 20) -> List[int]:
+    """LIVE-BOT breakout: close is the highest/lowest CLOSE of the last N bars."""
+    d = [0] * len(bars)
+    closes = [b.c for b in bars]
+    for i in range(lookback, len(bars)):
+        prior = closes[i - lookback:i]
+        if closes[i] > max(prior):
+            d[i] = 1
+        elif closes[i] < min(prior):
+            d[i] = -1
+    return d
+
+
 def gate(direction: List[int], keep) -> List[int]:
     """Zero out signals where keep(i) is False (regime gating)."""
     return [d if (d != 0 and keep(i)) else 0 for i, d in enumerate(direction)]

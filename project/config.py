@@ -63,6 +63,8 @@ class StrategyConfig:
     atr_period: int = 14
     stop_atr_mult: float = 1.5  # initial stop distance
     trail_atr_mult: float = 1.5 # ATR trailing distance (0 disables)
+    fixed_stop_pips: float = 0.0   # if >0, use a fixed-pip stop (live-bot mechanics)
+    fixed_target_pips: float = 0.0 # fixed-pip target paired with fixed_stop_pips
     # exits / management
     breakeven_at_r: float = 0.0     # move stop to entry after +Nr (0 disables)
     target_r: float = 0.0           # fixed R target (0 = no fixed target, ride trail)

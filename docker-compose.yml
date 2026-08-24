@@ -20,21 +20,26 @@ services:
       OANDA_ACCOUNT_ID: "${OANDA_ACCOUNT_ID:-101-001-39975042-001}"
       OANDA_API_URL: "${OANDA_API_URL:-https://api-fxpractice.oanda.com}"
       OANDA_DRY_RUN: "${OANDA_DRY_RUN:-false}"
-      # --- winning strategy config (JPY-cross trend edge) ---
-      OANDA_STRATEGY: "${OANDA_STRATEGY:-ema_trend}"
-      OANDA_INSTRUMENTS: "${OANDA_INSTRUMENTS:-AUD_JPY,EUR_JPY}"
+      # --- validated strategy config: GOLD breakout (XAU_USD) ---
+      # The one config that survives the full hostile audit (project/FINAL_REPORT.md):
+      # Donchian breakout on gold H1, positive across IS/VALID/OOS, robust to
+      # parameters and costs. Gold pip = 0.1, so stop 200 pips = $20, target = $40.
+      OANDA_STRATEGY: "${OANDA_STRATEGY:-breakout}"
+      OANDA_INSTRUMENTS: "${OANDA_INSTRUMENTS:-XAU_USD}"
       OANDA_TIMEFRAME: "${OANDA_TIMEFRAME:-H1}"
-      OANDA_CANDLE_COUNT: "${OANDA_CANDLE_COUNT:-150}"
-      OANDA_TREND_FILTER: "${OANDA_TREND_FILTER:-true}"
-      OANDA_TREND_FAST: "${OANDA_TREND_FAST:-20}"
-      OANDA_TREND_SLOW: "${OANDA_TREND_SLOW:-60}"
-      OANDA_STOP_LOSS_PIPS: "${OANDA_STOP_LOSS_PIPS:-30}"
-      OANDA_TAKE_PROFIT_PIPS: "${OANDA_TAKE_PROFIT_PIPS:-75}"
-      # early-exit overrides OFF: let the clean 30/75 broker stop+target run
+      OANDA_CANDLE_COUNT: "${OANDA_CANDLE_COUNT:-120}"
+      OANDA_BREAKOUT_LOOKBACK: "${OANDA_BREAKOUT_LOOKBACK:-40}"
+      OANDA_TREND_FILTER: "${OANDA_TREND_FILTER:-false}"
+      OANDA_STOP_LOSS_PIPS: "${OANDA_STOP_LOSS_PIPS:-200}"
+      OANDA_TAKE_PROFIT_PIPS: "${OANDA_TAKE_PROFIT_PIPS:-400}"
+      # early-exit overrides OFF: let the clean broker stop+target run
       OANDA_PROFIT_TAKE_PCT: "${OANDA_PROFIT_TAKE_PCT:-0}"
       OANDA_LOSS_CUT_PCT: "${OANDA_LOSS_CUT_PCT:-0}"
       OANDA_MIN_OPEN_TRADES: "${OANDA_MIN_OPEN_TRADES:-0}"
-      OANDA_RISK_PER_TRADE: "${OANDA_RISK_PER_TRADE:-10}"
+      # Gold trades in WHOLE ounces (~$4700 each). With a $20 stop, $100 risk =
+      # 5 oz — enough that whole-ounce rounding stays faithful to the backtest.
+      # $10 (the old FX value) would round to 0 oz and never trade. ~0.1% of NAV.
+      OANDA_RISK_PER_TRADE: "${OANDA_RISK_PER_TRADE:-100}"
       # --- testing-week probation ---
       OANDA_TRIAL_DAYS: "${OANDA_TRIAL_DAYS:-7}"
       OANDA_TRIAL_MIN_PNL: "${OANDA_TRIAL_MIN_PNL:-50}"

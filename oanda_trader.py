@@ -304,12 +304,20 @@ def setup_logger():
 
 
 def pip_size(instrument: str) -> float:
-    """Pip size in price terms (0.01 for JPY-quoted pairs, else 0.0001)."""
+    """Pip size in price terms (0.1 gold, 0.01 silver/JPY-quoted, else 0.0001)."""
+    if instrument.startswith("XAU"):
+        return 0.1
+    if instrument.startswith("XAG"):
+        return 0.01
     return 0.01 if "JPY" in instrument else 0.0001
 
 
 def price_decimals(instrument: str) -> int:
     """Decimal places OANDA expects for a price on this instrument."""
+    if instrument.startswith("XAU"):
+        return 2
+    if instrument.startswith("XAG"):
+        return 3
     return 3 if "JPY" in instrument else 5
 
 
