@@ -22,7 +22,7 @@ from typing import Dict, List, Optional
 log = logging.getLogger("data")
 
 M15_SEC = 15 * 60
-TF_SECONDS = {"M15": 900, "H1": 3600, "H4": 4 * 3600}
+TF_SECONDS = {"M5": 300, "M15": 900, "H1": 3600, "H4": 4 * 3600}
 
 
 @dataclass

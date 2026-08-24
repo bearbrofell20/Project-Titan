@@ -186,3 +186,20 @@ losers does not make a winner.
 > feed, or a structural/latency advantage. Each is a different *class* of input,
 > not another indicator — and each is already heavily arbitraged by well-resourced
 > firms.
+
+## Addendum — key-level reaction (multi-timeframe, scaled to 5m) — no edge
+
+Tested trading the *reaction* at established key levels (previous session / H1 / H4
+/ previous-day highs & lows), fading a rejection wick with a stop beyond the wick
+and a 2R target (`key_levels.py`, `run_levels.py`):
+
+| timeframe | trades | all exp | PF | OOS |
+|---|---|---|---|---|
+| M15 (1.6y) | ~4,500 | −0.54 R | 0.49 | −0.62 |
+| M5 (120d) | ~2,340 | **−1.18 R** | **0.23** | −1.32 |
+
+Negative at every tolerance and split. **Scaling down to 5m made it dramatically
+worse, not better** — the lower timeframe adds noise and the fixed spread eats a
+larger share of each smaller move. The result also says price tends to *continue*
+through key levels more than it reverses at them (fading loses badly), and
+continuation (breakout) was already tested and negative too. No edge in levels.
