@@ -170,6 +170,10 @@ class Config:
     # volatility (essential for trading markets at different price scales — e.g.
     # gold + Nasdaq — in one bot). Falls back to the fixed pips above if ATR is
     # unavailable. This is how the validated breakout candidates were tested.
+    # Daily-loss circuit breaker: if the day's realized+unrealized loss reaches
+    # this many USD, STOP opening new trades until the next UTC day (open trades
+    # are still managed). 0 disables it. This is the "stop digging" brake.
+    MAX_DAILY_LOSS_USD = _env_float("OANDA_MAX_DAILY_LOSS_USD", 0.0)
     USE_ATR_EXITS = _env_bool("OANDA_USE_ATR_EXITS", False)
     ATR_STOP_MULT = _env_float("OANDA_ATR_STOP_MULT", 1.5)
     ATR_TARGET_MULT = _env_float("OANDA_ATR_TARGET_MULT", 3.0)  # 3.0 = 2R
@@ -1359,15 +1363,28 @@ class OandaBot:
                 self.manage_open_trades()  # 1) take-profit / loss-cut on open trades
                 open_instruments = self.client.get_open_instruments()
 
-                logger.info(f"\n[Cycle {cycle}] Scanning {len(Config.INSTRUMENTS)} pairs "
-                            f"({len(open_instruments)} open)...")
-                for instrument in Config.INSTRUMENTS:  # 2) strategy entries
-                    if self.check_kill_switch():
-                        break
-                    self.scan_pair(instrument, open_instruments)
+                # Daily-loss brake: reset at each UTC day, halt new entries if the
+                # day's loss (realized + unrealized) breaches the limit.
+                acct_now = self.client.get_account_details() or {}
+                nav_now = float(acct_now.get("NAV", acct_now.get("balance", 0)) or 0)
+                day_key = datetime.utcnow().date().toordinal()
+                if getattr(self, "_day_key", None) != day_key:
+                    self._day_key = day_key
+                    self._day_start_nav = nav_now
+                day_pnl = nav_now - getattr(self, "_day_start_nav", nav_now)
+                day_halted = (Config.MAX_DAILY_LOSS_USD > 0
+                              and day_pnl <= -Config.MAX_DAILY_LOSS_USD)
 
-                if not self.check_kill_switch():       # 3) top up to the minimum
-                    self.ensure_minimum_trades(open_instruments)
+                logger.info(f"\n[Cycle {cycle}] Scanning {len(Config.INSTRUMENTS)} pairs "
+                            f"({len(open_instruments)} open)  day P/L ${day_pnl:+.2f}"
+                            + ("  ⛔ DAILY-LOSS HALT (no new trades today)" if day_halted else ""))
+                if not day_halted:
+                    for instrument in Config.INSTRUMENTS:  # 2) strategy entries
+                        if self.check_kill_switch():
+                            break
+                        self.scan_pair(instrument, open_instruments)
+                    if not self.check_kill_switch():       # 3) top up to the minimum
+                        self.ensure_minimum_trades(open_instruments)
 
                 account = self.client.get_account_details()
                 if account:
