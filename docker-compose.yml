@@ -30,7 +30,11 @@ services:
       OANDA_CANDLE_COUNT: "${OANDA_CANDLE_COUNT:-120}"
       OANDA_BREAKOUT_LOOKBACK: "${OANDA_BREAKOUT_LOOKBACK:-40}"
       OANDA_TREND_FILTER: "${OANDA_TREND_FILTER:-false}"
-      OANDA_STOP_LOSS_PIPS: "${OANDA_STOP_LOSS_PIPS:-200}"
+      # ATR-scaled exits (stop = 1.5xATR, target = 2R) — how the edge was validated
+      OANDA_USE_ATR_EXITS: "${OANDA_USE_ATR_EXITS:-true}"
+      OANDA_ATR_STOP_MULT: "${OANDA_ATR_STOP_MULT:-1.5}"
+      OANDA_ATR_TARGET_MULT: "${OANDA_ATR_TARGET_MULT:-3.0}"
+      OANDA_STOP_LOSS_PIPS: "${OANDA_STOP_LOSS_PIPS:-200}"   # fallback if ATR unavailable
       OANDA_TAKE_PROFIT_PIPS: "${OANDA_TAKE_PROFIT_PIPS:-400}"
       # early-exit overrides OFF: let the clean broker stop+target run
       OANDA_PROFIT_TAKE_PCT: "${OANDA_PROFIT_TAKE_PCT:-0}"
