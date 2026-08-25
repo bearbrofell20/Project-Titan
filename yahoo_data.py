@@ -35,6 +35,10 @@ SYMBOLS = {
     "AUD_NZD": ("AUDNZD=X", 0.00015), "GBP_CAD": ("GBPCAD=X", 0.00015),
     "EUR_CAD": ("EURCAD=X", 0.00015), "AUD_CAD": ("AUDCAD=X", 0.00015),
     "GBP_NZD": ("GBPNZD=X", 0.00020), "EUR_NZD": ("EURNZD=X", 0.00020),
+    # trending non-FX markets (test breakout the way gold passed)
+    "SPX500_USD": ("ES=F", 0.25), "NAS100_USD": ("NQ=F", 0.75),
+    "US30_USD": ("YM=F", 1.5), "WTICO_USD": ("CL=F", 0.02),
+    "XAG_USD": ("SI=F", 0.015),
 }
 HDR = {"User-Agent": "Mozilla/5.0"}
 

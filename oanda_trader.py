@@ -166,6 +166,14 @@ class Config:
     # Risk Management --------------------------------------------------------
     STOP_LOSS_PIPS = _env_int("OANDA_STOP_LOSS_PIPS", 20)
     TAKE_PROFIT_PIPS = _env_int("OANDA_TAKE_PROFIT_PIPS", 40)
+    # ATR-based exits: when on, each instrument's stop/target scale to its own
+    # volatility (essential for trading markets at different price scales — e.g.
+    # gold + Nasdaq — in one bot). Falls back to the fixed pips above if ATR is
+    # unavailable. This is how the validated breakout candidates were tested.
+    USE_ATR_EXITS = _env_bool("OANDA_USE_ATR_EXITS", False)
+    ATR_STOP_MULT = _env_float("OANDA_ATR_STOP_MULT", 1.5)
+    ATR_TARGET_MULT = _env_float("OANDA_ATR_TARGET_MULT", 3.0)  # 3.0 = 2R
+    ATR_EXIT_PERIOD = _env_int("OANDA_ATR_EXIT_PERIOD", 14)
     MAX_OPEN_TRADES = _env_int("OANDA_MAX_OPEN_TRADES", 8)
     # Always keep at least this many trades open (fills with trend-following
     # fallback entries when strategy signals aren't enough).
@@ -304,11 +312,15 @@ def setup_logger():
 
 
 def pip_size(instrument: str) -> float:
-    """Pip size in price terms (0.1 gold, 0.01 silver/JPY-quoted, else 0.0001)."""
+    """Pip size in price terms, by instrument class."""
     if instrument.startswith("XAU"):
         return 0.1
     if instrument.startswith("XAG"):
         return 0.01
+    if any(k in instrument for k in ("SPX", "NAS", "US30", "DE30", "UK100", "JP225")):
+        return 1.0    # stock indices: 1 point
+    if any(k in instrument for k in ("WTICO", "BCO", "WTI", "NATGAS")):
+        return 0.01   # oil / energy
     return 0.01 if "JPY" in instrument else 0.0001
 
 
@@ -317,6 +329,10 @@ def price_decimals(instrument: str) -> int:
     if instrument.startswith("XAU"):
         return 2
     if instrument.startswith("XAG"):
+        return 3
+    if any(k in instrument for k in ("SPX", "NAS", "US30", "DE30", "UK100", "JP225")):
+        return 1
+    if any(k in instrument for k in ("WTICO", "BCO", "WTI", "NATGAS")):
         return 3
     return 3 if "JPY" in instrument else 5
 
@@ -1202,7 +1218,15 @@ class OandaBot:
     def _open_trade(self, instrument, direction, candles, open_instruments, tag=""):
         """Size and submit one trade in `direction` ('BUY'/'SELL'). Returns bool."""
         q2usd = self.quote_to_usd(instrument)
-        units = PositionManager.calculate_units(instrument, Config.STOP_LOSS_PIPS, q2usd)
+        # per-instrument stop/target: ATR-scaled when enabled, else fixed pips
+        stop_pips, tp_pips = Config.STOP_LOSS_PIPS, Config.TAKE_PROFIT_PIPS
+        if Config.USE_ATR_EXITS:
+            atr_price = atr(candles, Config.ATR_EXIT_PERIOD)
+            if atr_price and atr_price > 0:
+                ps = pip_size(instrument)
+                stop_pips = max(1, round(Config.ATR_STOP_MULT * atr_price / ps))
+                tp_pips = max(1, round(Config.ATR_TARGET_MULT * atr_price / ps))
+        units = PositionManager.calculate_units(instrument, stop_pips, q2usd)
         if units <= 0:
             logger.warning(f"Skip {instrument}: computed 0 units (sizing unavailable)")
             return False
@@ -1211,9 +1235,9 @@ class OandaBot:
 
         entry_price = float(candles[-1]["mid"]["c"])
         label = f"{direction}{(' ' + tag) if tag else ''}"
-        logger.info(f"\n📊 {label}: {instrument} ({units} units)")
+        logger.info(f"\n📊 {label}: {instrument} ({units} units, stop {stop_pips}p / tp {tp_pips}p)")
         order = self.client.place_order(
-            instrument, units, entry_price, Config.STOP_LOSS_PIPS, Config.TAKE_PROFIT_PIPS,
+            instrument, units, entry_price, stop_pips, tp_pips,
         )
         if order:
             open_instruments.add(instrument)

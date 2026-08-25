@@ -237,3 +237,23 @@ XAU_USD bid/ask.** This is the strongest, most robust result in the project and
 the first to earn a live paper test. It is NOT yet cleared for real capital: the
 open question is regime-generalization, which only more data (and a non-bull gold
 period) can answer.
+
+## Addendum — trending-markets sweep: Nasdaq is a second candidate
+
+Tested breakout on other trending non-FX markets (H1, ~2.4y, breakout 40, ATR
+1.5 stop / 2R target):
+
+| market | ALL exp | PF | IS / VALID / OOS | verdict |
+|---|---|---|---|---|
+| Gold (XAU) | +0.18R | 1.30 | +.12 / +.31 / +.26 | ROBUST |
+| **Nasdaq (NAS100)** | +0.15R | 1.24 | +.19 / ~0 / +.16 | **CANDIDATE** |
+| Dow (US30) | +0.12R | 1.20 | +.20 / +.07 / −.07 | fails OOS |
+| S&P (SPX500) | +0.07R | 1.11 | inconsistent | marginal |
+| Oil (WTI) | −0.04R | 0.94 | — | no |
+| Silver (XAG) | +0.04R | 1.06 | −.06 / +.20 / +.16 | marginal |
+
+Nasdaq audit: parameter-robust (lookback 20–60 all +0.15 to +0.20R), walk-forward
+4/6 positive, Monte-Carlo P(>0)=99.1%. **Same caveat as gold:** the 2024–2026
+sample is a strong bull market for both, so regime-generalization is unproven (the
+two negative walk-forward windows are the non-trending stretches). Confirms the
+thesis: the edge is in TRENDING markets (gold, index), not efficient FX.
