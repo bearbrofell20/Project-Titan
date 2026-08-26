@@ -257,3 +257,34 @@ Nasdaq audit: parameter-robust (lookback 20–60 all +0.15 to +0.20R), walk-forw
 sample is a strong bull market for both, so regime-generalization is unproven (the
 two negative walk-forward windows are the non-trending stretches). Confirms the
 thesis: the edge is in TRENDING markets (gold, index), not efficient FX.
+
+## Addendum — the 70%-win-rate FX target: achievable, but always negative-expectancy
+
+Directive: build a ≥70%-win-rate GREEN FX portfolio (gold excluded), $110k→$300k
+in ~12 months. Tested the win-rate/expectancy frontier honestly (mean-reversion,
+FX universe, pooled, fixed-pip target/stop, real costs, 70/30 OOS split):
+
+| target/stop (pips) | win rate | expectancy | OOS win% | OOS exp |
+|---|---|---|---|---|
+| 10 / 60 | **80.0%** | −0.109 R | 81.6% | −0.090 R |
+| 15 / 60 | **75.1%** | −0.104 R | 76.0% | −0.093 R |
+| 20 / 60 | **70.4%** | −0.104 R | 71.0% | −0.096 R |
+| 10 / 40 | 72.9% | −0.153 R | 76.1% | −0.113 R |
+
+**The ≥70% win rate is trivially achievable and robust out-of-sample — but EVERY
+such config has negative expectancy** (PF < 1, in- and out-of-sample). High win
+rate on FX comes only from a tiny target + wide stop, so one loss erases ~6 wins
+and the spread taxes every trade. Per the directive's own acceptance criteria
+(≥70% win **AND** positive expectancy **AND** green equity), **no FX configuration
+qualifies.** This is reported, not manufactured — exactly as instructed.
+
+**$300k target:** $110k→$300k = **+173% in 12 months**. With no positive-expectancy
+FX edge available (gold, the one edge found, is excluded), the honest probability
+of reaching $300k on an FX-only paper portfolio is **≈ 0** — the expected value of
+every tested FX config is negative, so on average the account shrinks, not grows.
+An S&P 500 benchmark over the same window would beat it trivially by having
+positive expected return at all.
+
+**Verdict: a ≥70%-win-rate, positive-expectancy, green FX-only portfolio is NOT
+supported by the evidence.** The win-rate target and profitability are mutually
+exclusive on this universe.
