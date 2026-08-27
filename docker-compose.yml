@@ -41,6 +41,8 @@ services:
       OANDA_LOSS_CUT_PCT: "${OANDA_LOSS_CUT_PCT:-0}"
       # daily-loss brake: stop opening new trades if down this much in a UTC day
       OANDA_MAX_DAILY_LOSS_USD: "${OANDA_MAX_DAILY_LOSS_USD:-150}"
+      # daily profit-lock: close all + stop for the day when up this much ("sell out when up")
+      OANDA_MAX_DAILY_PROFIT_USD: "${OANDA_MAX_DAILY_PROFIT_USD:-0}"
       OANDA_MIN_OPEN_TRADES: "${OANDA_MIN_OPEN_TRADES:-0}"
       # Gold trades in WHOLE ounces (~$4700 each). With a $20 stop, $100 risk =
       # 5 oz — enough that whole-ounce rounding stays faithful to the backtest.

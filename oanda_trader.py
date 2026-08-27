@@ -174,6 +174,10 @@ class Config:
     # this many USD, STOP opening new trades until the next UTC day (open trades
     # are still managed). 0 disables it. This is the "stop digging" brake.
     MAX_DAILY_LOSS_USD = _env_float("OANDA_MAX_DAILY_LOSS_USD", 0.0)
+    # Daily profit-lock: when the day's P/L reaches +this many USD, CLOSE all open
+    # trades to bank the gain and stop opening new ones until the next UTC day.
+    # "When we're up, sell out." 0 disables it.
+    MAX_DAILY_PROFIT_USD = _env_float("OANDA_MAX_DAILY_PROFIT_USD", 0.0)
     USE_ATR_EXITS = _env_bool("OANDA_USE_ATR_EXITS", False)
     ATR_STOP_MULT = _env_float("OANDA_ATR_STOP_MULT", 1.5)
     ATR_TARGET_MULT = _env_float("OANDA_ATR_TARGET_MULT", 3.0)  # 3.0 = 2R
@@ -1267,6 +1271,16 @@ class OandaBot:
                             f"{pct:.1f}% of margin (<= -{Config.LOSS_CUT_PCT}%), closing")
                 self.client.close_trade(t.get("id"))
 
+    def close_all_trades(self, reason=""):
+        """Flatten every open position (used by the daily profit-lock)."""
+        closed = 0
+        for t in self.client.get_open_trades():
+            if self.client.close_trade(t.get("id")):
+                closed += 1
+        if closed:
+            logger.info(f"🔒 Closed {closed} open trade(s){(' — ' + reason) if reason else ''}")
+        return closed
+
     # -- keep at least MIN_OPEN_TRADES open (trend-following fallback) ------
     def ensure_minimum_trades(self, open_instruments):
         for instrument in Config.INSTRUMENTS:
@@ -1371,9 +1385,18 @@ class OandaBot:
                 if getattr(self, "_day_key", None) != day_key:
                     self._day_key = day_key
                     self._day_start_nav = nav_now
+                    self._day_locked = False  # new day: clear the profit-lock
                 day_pnl = nav_now - getattr(self, "_day_start_nav", nav_now)
-                day_halted = (Config.MAX_DAILY_LOSS_USD > 0
-                              and day_pnl <= -Config.MAX_DAILY_LOSS_USD)
+                # Daily profit-lock: bank the day's gain and stop until tomorrow.
+                if (Config.MAX_DAILY_PROFIT_USD > 0
+                        and day_pnl >= Config.MAX_DAILY_PROFIT_USD
+                        and not getattr(self, "_day_locked", False)):
+                    self.close_all_trades(f"daily profit target +${day_pnl:.2f} hit — banking it")
+                    self._day_locked = True
+                day_halted = (
+                    getattr(self, "_day_locked", False)
+                    or (Config.MAX_DAILY_LOSS_USD > 0
+                        and day_pnl <= -Config.MAX_DAILY_LOSS_USD))
 
                 logger.info(f"\n[Cycle {cycle}] Scanning {len(Config.INSTRUMENTS)} pairs "
                             f"({len(open_instruments)} open)  day P/L ${day_pnl:+.2f}"
