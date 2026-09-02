@@ -79,3 +79,21 @@ failing, exactly as gold did. It is a candidate, not a paycheck.
 **One-line verdict:** genuine edge in the backtest, real robustness signals, but a
 low-win-rate trend strategy carrying the identical "bull-market + synthetic data"
 risk that just burned gold — promising, unproven, and not a safe income source.
+
+## UPDATE — 25-year multi-regime test (the decisive one)
+
+Tested a DAILY breakout on 25 years of Nasdaq (^NDX, 2001–2026) to answer the
+one question that killed gold: does the trend edge survive bear markets?
+
+- **Full 25y: net positive, PF 1.25, +0.186 R/trade** (breakout-40, 2×ATR/3R).
+- **It made money THROUGH the crashes:** 2008 +3.1R, 2020 +3.7R, 2022 +0.9R.
+- Only losing years were **choppy/sideways** (2011 −8R, 2015 −5R) — trend-following's
+  known weakness, not a crash.
+- Parameter-robust across lookback 20/40/60 (+0.12 to +0.20 R).
+
+**Significance:** unlike gold (2-year bull-market sample), the Nasdaq trend edge
+holds across 25 years and every major regime, long and short. Caveats remain
+(daily ≠ the intraday config; ~7 trades/yr is thin; modest ~1.2R/yr; 32% win rate).
+But this is the strongest regime-robustness evidence in the project — the trend
+edge on Nasdaq is real, not a bull-market artifact. Still not "certain" (nothing
+is), but a genuinely different tier of evidence.
