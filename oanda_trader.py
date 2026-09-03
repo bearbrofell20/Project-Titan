@@ -451,6 +451,18 @@ class OandaClient:
         data = self._request("GET", f"/v3/accounts/{Config.ACCOUNT_ID}/openTrades")
         return (data or {}).get("trades", [])
 
+    def get_closed_trades(self, count=100):
+        """Most recent CLOSED trades — the raw material for the outcome ledger.
+
+        Each carries realizedPL, entry `price`, `averageClosePrice`, open/close
+        times and initialUnits: everything needed to score a trade honestly.
+        """
+        data = self._request(
+            "GET", f"/v3/accounts/{Config.ACCOUNT_ID}/trades",
+            params={"state": "CLOSED", "count": count},
+        )
+        return (data or {}).get("trades", [])
+
     def place_order(self, instrument, units, entry_price, stop_loss_pips, take_profit_pips):
         """Place a market order with a fill-relative SL distance and a TP price."""
         ps = pip_size(instrument)
@@ -1114,6 +1126,111 @@ class TradeLogger:
         return f"Total trades: {len(self.trades)}"
 
 
+class TradeLedger:
+    """Append-only ledger of CLOSED trades — the system's scorecard.
+
+    The bot previously logged only trade *entries*, so nothing could ever be
+    evaluated: no exit, no P/L, no win/loss. This reconciles OANDA's closed
+    trades into a durable JSONL (deduped by trade id) that survives restarts,
+    and computes the honest running stats.
+
+    ``r_multiple`` is realized P/L expressed in units of the *configured* risk
+    per trade (RISK_PER_TRADE). It is an approximation of true R — actual risk
+    can differ slightly when unit rounding or slippage moves the real stop
+    distance — and is labelled as such rather than presented as exact.
+    """
+
+    def __init__(self, log_dir):
+        self.path = Path(log_dir) / "closed_trades.jsonl"
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.seen = set()
+        self.rows = []
+        for row in self._read():
+            self.rows.append(row)
+            self.seen.add(str(row.get("id")))
+
+    def _read(self):
+        if not self.path.exists():
+            return []
+        out = []
+        for line in self.path.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                continue  # never let one corrupt line lose the whole ledger
+        return out
+
+    def record(self, closed_trades):
+        """Append any closed trades not already recorded. Returns count added."""
+        added = 0
+        risk = Config.RISK_PER_TRADE or 1.0
+        for t in closed_trades:
+            tid = str(t.get("id"))
+            if not tid or tid in self.seen:
+                continue
+            try:
+                pl = float(t.get("realizedPL", 0) or 0)
+                units = float(t.get("initialUnits", 0) or 0)
+                entry = float(t.get("price", 0) or 0)
+                exit_px = float(t.get("averageClosePrice", 0) or 0)
+            except (TypeError, ValueError):
+                continue
+            row = {
+                "id": tid,
+                "instrument": t.get("instrument"),
+                "direction": "BUY" if units > 0 else "SELL",
+                "units": units,
+                "entry_price": entry,
+                "exit_price": exit_px,
+                "realized_pl": round(pl, 4),
+                "r_multiple": round(pl / risk, 3),
+                "result": "WIN" if pl > 0 else ("LOSS" if pl < 0 else "SCRATCH"),
+                "open_time": t.get("openTime"),
+                "close_time": t.get("closeTime"),
+                "risk_per_trade": risk,
+            }
+            with open(self.path, "a") as fh:
+                fh.write(json.dumps(row) + "\n")
+            self.rows.append(row)
+            self.seen.add(tid)
+            added += 1
+        return added
+
+    def stats(self):
+        """Honest running scorecard over every closed trade on record."""
+        n = len(self.rows)
+        if not n:
+            return {"trades": 0}
+        pls = [r["realized_pl"] for r in self.rows]
+        wins = [p for p in pls if p > 0]
+        losses = [p for p in pls if p < 0]
+        gross_win = sum(wins)
+        gross_loss = -sum(losses)
+        return {
+            "trades": n,
+            "wins": len(wins),
+            "losses": len(losses),
+            "win_rate": round(100.0 * len(wins) / n, 1),
+            "net_pl": round(sum(pls), 2),
+            "avg_win": round(gross_win / len(wins), 2) if wins else 0.0,
+            "avg_loss": round(-gross_loss / len(losses), 2) if losses else 0.0,
+            "profit_factor": round(gross_win / gross_loss, 3) if gross_loss > 0 else None,
+            "expectancy_r": round(sum(r["r_multiple"] for r in self.rows) / n, 4),
+        }
+
+    def line(self):
+        s = self.stats()
+        if not s.get("trades"):
+            return "📒 Ledger: no closed trades yet."
+        pf = s["profit_factor"]
+        return (f"📒 Closed {s['trades']} | win {s['win_rate']}% "
+                f"({s['wins']}W/{s['losses']}L) | net ${s['net_pl']:+.2f} | "
+                f"PF {pf if pf is not None else '—'} | exp {s['expectancy_r']:+.3f}R")
+
+
 # ============================================================================
 # MAIN BOT
 # ============================================================================
@@ -1125,6 +1242,8 @@ class OandaBot:
     def __init__(self, api_token):
         self.client = OandaClient(api_token)
         self.trade_logger = TradeLogger(Config.STATS_FILE)
+        # Durable closed-trade ledger: the only record of actual OUTCOMES.
+        self.ledger = TradeLedger(Config.LOG_DIR)
         self.last_candle_time = defaultdict(int)
         self.running = True
         self.stats_errors = 0  # cycles that hit (and survived) an error
@@ -1412,6 +1531,14 @@ class OandaBot:
                 account = self.client.get_account_details()
                 if account:
                     logger.info(f"Account balance: ${float(account.get('balance', 0)):.2f}")
+                    # Reconcile finished trades into the ledger and show the score.
+                    try:
+                        added = self.ledger.record(self.client.get_closed_trades())
+                        if added:
+                            logger.info(f"📒 Recorded {added} newly closed trade(s)")
+                        logger.info(self.ledger.line())
+                    except Exception as e:
+                        logger.error(f"Ledger update failed (continuing): {e}")
                     # Update the trial scorecard and enforce the verdict.
                     nav = float(account.get("NAV", account.get("balance", 0)) or 0)
                     standing = self.probation.record(

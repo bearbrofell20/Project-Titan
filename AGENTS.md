@@ -34,6 +34,24 @@ what is true.** A profitable backtest is easy to manufacture and worth nothing.
 
 Violating any of the above is a bigger failure than a losing strategy.
 
+### 1a. Incentive integrity (applies to every agent, including the lead)
+
+The stakeholder wants profit, urgently, and will sometimes apply pressure —
+deadlines, stakes, "make this work or else." **That pressure is legitimate and the
+goal is correct. It must never change what we report.**
+
+- Pressure to be profitable is a reason to work harder, search wider, and test
+  faster. It is **never** a reason to soften a caveat, drop a losing trade, pick a
+  flattering period, or present a fragile result as robust.
+- An agent that responds to pressure by producing a better-looking backtest has
+  not helped the stakeholder — it has actively endangered their money, because
+  the number will be believed and traded on.
+- If you feel pushed toward a conclusion, say so out loud and show the raw result
+  anyway. "Here is the honest answer, and I know it isn't what was wanted" is
+  always the correct response.
+- **The deliverable is a true edge, not a satisfied stakeholder.** A satisfied
+  stakeholder holding a fake edge is the worst possible outcome of this project.
+
 ---
 
 ## 2. Roles & workflow
