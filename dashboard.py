@@ -221,12 +221,56 @@ def _news_feed() -> dict | None:
         return None
 
 
+def _ledger_scorecard() -> dict | None:
+    """One-year test scorecard from the closed-trade ledger (the real progress).
+
+    Reports measured outcomes only, plus progress against the PASS criteria
+    pre-registered in project/ONE_YEAR_TEST.md. Never asserts an edge exists —
+    at small samples it reports that the result is not yet conclusive.
+    """
+    try:
+        from oanda_trader import TradeLedger
+        led = TradeLedger(Config.LOG_DIR)
+        s = led.stats()
+        if not s.get("trades"):
+            return {"trades": 0}
+        rows = led.rows
+        # peak-to-trough drawdown of the realized equity curve, in dollars
+        eq = peak = dd = 0.0
+        for r in rows:
+            eq += r.get("realized_pl", 0.0)
+            peak = max(peak, eq)
+            dd = max(dd, peak - eq)
+        pf = s.get("profit_factor")
+        target_trades = 150
+        return {
+            "trades": s["trades"],
+            "wins": s["wins"],
+            "losses": s["losses"],
+            "win_rate": s["win_rate"],
+            "net_pl": s["net_pl"],
+            "profit_factor": pf,
+            "expectancy_r": s["expectancy_r"],
+            "max_dd": round(dd, 2),
+            "target_trades": target_trades,
+            "progress_pct": round(min(100.0, 100.0 * s["trades"] / target_trades), 1),
+            # PASS gates from ONE_YEAR_TEST.md §4
+            "gate_trades": s["trades"] >= target_trades,
+            "gate_expectancy": s["expectancy_r"] > 0,
+            "gate_pf": (pf is not None and pf >= 1.15),
+            "conclusive": s["trades"] >= 150,
+        }
+    except Exception:
+        return None
+
+
 def build_state(oanda_client, kalshi_client) -> dict:
     return {
         "status": "ok",
         "time": datetime.now(timezone.utc).isoformat(),
         "bots": {"oanda": bot_proc_running("oanda"), "kalshi": bot_proc_running("kalshi")},
         "probation": _probation_standing(),
+        "ledger": _ledger_scorecard(),
         "news": _news_feed(),
         "venues": {
             "oanda": build_oanda_venue(oanda_client),
@@ -422,6 +466,7 @@ INDEX_HTML = """<!doctype html>
 
 <div class="wrap">
   <div class="pods" id="pods"></div>
+  <div id="scorecard"></div>
   <div id="probation"></div>
   <section id="intel"></section>
   <section id="oanda"></section>
@@ -491,6 +536,42 @@ function renderKalshi(v){
   const pos=v.positions.length?v.positions.map(p=>`<tr><td>${esc(p.ticker)}</td><td>${p.quantity}</td><td>${p.avgPriceCents}¢</td><td>${money(p.exposure)}</td></tr>`).join(''):'<tr><td colspan="4" class="mut">no open positions</td></tr>';
   return `<div class="panel">${head}<div class="foot">balance <b>${money(a.balance)}</b></div>`+
     `<h3 class="foot">Open positions</h3><div class="tblwrap"><table><thead><tr><th>Ticker</th><th>Qty</th><th>Avg</th><th>Exposure</th></tr></thead><tbody>${pos}</tbody></table></div></div>`;
+}
+
+function renderScorecard(sc){
+  const el=document.getElementById('scorecard');
+  if(!sc){ el.innerHTML=''; return; }
+  if(!sc.trades){
+    el.innerHTML=`<div class="panel" style="margin-bottom:16px">`+
+      `<div class="trial-top"><h2 style="font-size:11px;letter-spacing:.32em;margin:0;color:var(--cyan)">`+
+      `◇ One-Year Test</h2><span class="trial-verdict failing">AWAITING FIRST CLOSE</span></div>`+
+      `<div class="note" style="margin-top:8px">No closed trades recorded yet. `+
+      `Scorecard populates as trades finish.</div></div>`;
+    return;
+  }
+  const g=(ok)=>ok?'<span style="color:var(--green)">PASS</span>'
+                  :'<span style="color:var(--mut)">pending</span>';
+  const verdict = sc.conclusive
+      ? (sc.gate_expectancy&&sc.gate_pf ? ['MEETING CRITERIA','passing'] : ['BELOW CRITERIA','failing'])
+      : ['SAMPLE TOO SMALL','failing'];
+  el.innerHTML=`<div class="panel" style="margin-bottom:16px">`+
+    `<div class="trial-top"><h2 style="font-size:11px;letter-spacing:.32em;margin:0;color:var(--cyan)">`+
+    `◇ One-Year Test</h2><span class="trial-verdict ${verdict[1]}">${verdict[0]}</span></div>`+
+    `<div class="trial-bar"><i style="width:${sc.progress_pct}%"></i></div>`+
+    `<div class="trial-grid">`+
+      `<div class="k">Closed trades <span class="val">${sc.trades} / ${sc.target_trades}</span></div>`+
+      `<div class="k">Net P/L <span class="val ${clsPL(sc.net_pl)}">${money(sc.net_pl)}</span></div>`+
+      `<div class="k">Win rate <span class="val">${sc.win_rate}% (${sc.wins}W/${sc.losses}L)</span></div>`+
+      `<div class="k">Expectancy <span class="val ${clsPL(sc.expectancy_r)}">${sc.expectancy_r>0?'+':''}${sc.expectancy_r} R</span></div>`+
+      `<div class="k">Profit factor <span class="val">${sc.profit_factor!==null?sc.profit_factor:'—'}</span></div>`+
+      `<div class="k">Max drawdown <span class="val">${money(sc.max_dd)}</span></div>`+
+      `<div class="k">Sample ≥150 <span class="val">${g(sc.gate_trades)}</span></div>`+
+      `<div class="k">PF ≥ 1.15 <span class="val">${g(sc.gate_pf)}</span></div>`+
+    `</div>`+
+    (sc.conclusive?'':`<div class="note" style="margin-top:10px">`+
+      `Below 150 trades this result cannot be distinguished from luck — `+
+      `it is not yet evidence either way.</div>`)+
+    `</div>`;
 }
 
 function renderProbation(p){
@@ -566,6 +647,7 @@ async function tick(){
   document.getElementById('core-balance').textContent = o.account?money(o.account.balance,0):'—';
   document.getElementById('core-status').textContent = o.status==='ok'?(anyOn?'● live':'○ idle'):'awaiting link';
   renderPods(o);
+  renderScorecard(s.ledger);
   renderProbation(s.probation);
   renderNews(s.news);
   document.getElementById('oanda').innerHTML = renderOanda(o);
